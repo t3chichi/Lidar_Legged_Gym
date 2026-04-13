@@ -163,4 +163,4 @@ def test_pd_risknet_config_gate():
     assert env_cfg.pd_risknet.history_length == 10
     assert env_cfg.pd_risknet.proximal_feature_dim == 187
     assert env_cfg.pd_risknet.distal_feature_dim == 64
-    assert env_cfg.pd_risknet.n_sectors == 36
+    assert env_cfg.pd_risknet.n_sectors == 24

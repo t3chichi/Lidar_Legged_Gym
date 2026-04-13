@@ -2,11 +2,11 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 
 
 PD_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 32
-PD_SPHERICAL_ELEVATION = 32
+PD_SPHERICAL_AZIMUTH = 24
+PD_SPHERICAL_ELEVATION = 18
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
-PD_PROXIMAL_POINTS = 512
-PD_DISTAL_POINTS = 512
+PD_PROXIMAL_POINTS = 288
+PD_DISTAL_POINTS = 144
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
@@ -23,7 +23,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = 20.0
 
-        n_sectors = 36
+        n_sectors = 24
         avoid_distance_thresh = 1.0
         avoid_alpha = 1.0
         avoid_beta = 1.0
