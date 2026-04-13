@@ -4,6 +4,7 @@ import numpy as np
 import warp as wp
 
 from isaacgym.torch_utils import quat_rotate_inverse, quat_apply
+from isaacgym import gymapi, gymutil
 
 from legged_gym.envs.go2.go2 import Go2
 from LidarSensor.lidar_sensor import LidarSensor
@@ -19,6 +20,8 @@ class Go2LidarPDRiskNet(Go2):
 
     def _init_buffers(self):
         super()._init_buffers()
+        # Enable per-step debug drawing for this task when viewer is available.
+        self.debug_viz = True
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
 
@@ -250,3 +253,44 @@ class Go2LidarPDRiskNet(Go2):
 
         if self.add_noise:
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
+
+    def _draw_debug_vis(self):
+        """Draw LiDAR points and velocity vectors for quick policy debugging."""
+        if self.viewer is None:
+            return
+
+        self.gym.clear_lines(self.viewer)
+        env_id = 0
+
+        # Draw a lightweight subset of LiDAR points in world frame.
+        pts_base = self.lidar_points_base[env_id]
+        num_pts = pts_base.shape[0]
+        max_draw = min(256, num_pts)
+        if max_draw > 0:
+            step = max(1, num_pts // max_draw)
+            idx = torch.arange(0, num_pts, step, device=self.device)[:max_draw]
+            pts_sel = pts_base[idx]
+            base_pos = self.base_pos[env_id].unsqueeze(0).repeat(pts_sel.shape[0], 1)
+            base_quat = self.base_quat[env_id].unsqueeze(0).repeat(pts_sel.shape[0], 1)
+            pts_world = base_pos + quat_apply(base_quat, pts_sel)
+
+            sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 0, 0))
+            pts_np = pts_world.detach().cpu().numpy()
+            for p in pts_np:
+                sphere_pose = gymapi.Transform(gymapi.Vec3(float(p[0]), float(p[1]), float(p[2])), r=None)
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
+
+        # Draw command direction (green) and avoidance direction (yellow).
+        start = self.base_pos[env_id].detach().cpu().numpy()
+        cmd_xy = self.commands[env_id, :2].detach().cpu().numpy()
+        avoid_xy = self.v_avoid[env_id].detach().cpu().numpy()
+
+        cmd_vec = np.array([cmd_xy[0], cmd_xy[1], 0.0], dtype=np.float32)
+        avoid_vec = np.array([avoid_xy[0], avoid_xy[1], 0.0], dtype=np.float32)
+
+        cmd_norm = np.linalg.norm(cmd_vec[:2])
+        avoid_norm = np.linalg.norm(avoid_vec[:2])
+        if cmd_norm > 1.0e-6:
+            self.vis.draw_arrow(env_id, start.tolist(), (start + 0.6 * cmd_vec / cmd_norm).tolist(), width=0.01, color=(0, 1, 0))
+        if avoid_norm > 1.0e-6:
+            self.vis.draw_arrow(env_id, start.tolist(), (start + 0.6 * avoid_vec / avoid_norm).tolist(), width=0.01, color=(1, 1, 0))

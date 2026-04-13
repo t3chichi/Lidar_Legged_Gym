@@ -122,6 +122,10 @@ class Terrain:
         slope = difficulty * 0.4
         step_height = 0.05 + 0.18 * difficulty
         discrete_obstacles_height = 0.05 + difficulty * 0.2
+        # Optional task-level override: sample obstacle height from a configurable range.
+        if hasattr(self.cfg, "discrete_obstacle_height_range"):
+            h_min, h_max = self.cfg.discrete_obstacle_height_range
+            discrete_obstacles_height = np.random.uniform(h_min, h_max)
         stepping_stones_size = 1.5 * (1.05 - difficulty)
         stone_distance = 0.05 if difficulty == 0 else 0.1
         gap_size = 1. * difficulty

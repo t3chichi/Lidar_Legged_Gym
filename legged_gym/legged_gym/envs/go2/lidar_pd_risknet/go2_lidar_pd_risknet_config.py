@@ -46,6 +46,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Use obstacle-dense terrains for avoidance training without adding extra actors.
         curriculum = False
         terrain_proportions = [0.0, 0.0, 0.0, 0.0, 1.0]
+        # Random obstacle height per sub-terrain (meters): enables both shorter and taller obstacles.
+        discrete_obstacle_height_range = [0.02, 0.45]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
