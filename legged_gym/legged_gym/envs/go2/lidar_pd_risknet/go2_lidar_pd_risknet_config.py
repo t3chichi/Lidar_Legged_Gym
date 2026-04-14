@@ -62,7 +62,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         max_distance = 10.0
         attach_yaw_only = False
-        offset_pos = [0.2, 0.0, 0.20]
+        # Match unitree_go2.py lidar mount translation (base frame, meters).
+        offset_pos = [0.28945, 0.0, -0.046825]
+        # Match unitree_go2.py lidar mount fixed rotation (roll, pitch, yaw in radians).
+        sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
         class scales(Go2RoughCfg.rewards.scales):
@@ -138,6 +141,6 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class runner(Go2RoughCfgPPO.runner):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
-        num_steps_per_env = 20
+        num_steps_per_env = 18
         experiment_name = "go2_lidar_pd_risknet"
         run_name = ""

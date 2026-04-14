@@ -3,7 +3,7 @@ import math
 import numpy as np
 import warp as wp
 
-from isaacgym.torch_utils import quat_rotate_inverse, quat_apply
+from isaacgym.torch_utils import quat_rotate_inverse, quat_apply, quat_mul, quat_from_euler_xyz
 from isaacgym import gymapi, gymutil
 
 from legged_gym.envs.go2.go2 import Go2
@@ -129,19 +129,29 @@ class Go2LidarPDRiskNet(Go2):
             "mesh_ids": self.mesh_ids,
         }
         self.lidar_sensor = LidarSensor(lidar_env, None, lidar_cfg, num_sensors=1, device=self.device)
-        self._sensor_offset = torch.tensor(list(ray_cfg.offset_pos), dtype=torch.float32, device=self.device).view(1, 3)
+        self._sensor_translation = torch.tensor(list(ray_cfg.offset_pos), dtype=torch.float32, device=self.device).view(1, 3).repeat(self.num_envs, 1)
+        rpy = getattr(ray_cfg, "sensor_offset_rpy", [0.0, 0.0, 0.0])
+        offset_q = quat_from_euler_xyz(
+            torch.tensor(float(rpy[0]), device=self.device),
+            torch.tensor(float(rpy[1]), device=self.device),
+            torch.tensor(float(rpy[2]), device=self.device),
+        )
+        self._sensor_offset_quat = offset_q.view(1, 4).repeat(self.num_envs, 1)
 
     def _update_lidar_history(self):
         if self.lidar_sensor is None:
             return
 
         # Keep sensor attached to base with configurable translation offset.
-        self.sensor_quat_tensor.copy_(self.base_quat)
-        self.sensor_pos_tensor.copy_(self.base_pos + quat_apply(self.base_quat, self._sensor_offset.repeat(self.num_envs, 1)))
-
+        self.sensor_quat_tensor.copy_(quat_mul(self.base_quat, self._sensor_offset_quat))
+        self.sensor_pos_tensor.copy_(self.base_pos + quat_apply(self.base_quat, self._sensor_translation))
+        
         lidar_points, lidar_dist = self.lidar_sensor.update()
         points_sensor = lidar_points.view(self.num_envs, -1, 3)
-        points_base = points_sensor + self._sensor_offset.repeat(self.num_envs, points_sensor.shape[1], 1)
+        n_points = points_sensor.shape[1]
+        sensor_quat_repeat = self._sensor_offset_quat.unsqueeze(1).repeat(1, n_points, 1).reshape(-1, 4)
+        points_base = quat_apply(sensor_quat_repeat, points_sensor.reshape(-1, 3)).reshape(self.num_envs, n_points, 3)
+        points_base = points_base + self._sensor_translation.unsqueeze(1)
         dist = lidar_dist.view(self.num_envs, -1)
         valid = dist > 0.0
 
