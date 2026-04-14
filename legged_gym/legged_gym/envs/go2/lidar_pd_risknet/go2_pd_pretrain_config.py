@@ -83,23 +83,40 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             vel_avoid = 0 # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
             rays = 0  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
-            # Auxiliary rewards from appendix Table 5.
-            lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
-            feet_stumble = -2.0e-2  # 惩罚脚部绊碰（足端受到异常横向冲击）
-            collision = -2.0e-2  # 惩罚机体/连杆非期望碰撞
-            dof_pos_limits = -0.2  # 惩罚关节接近或超过位置限位
-            torques = -1.0e-6  # 惩罚关节力矩过大，降低能耗和电机负担
-            dof_vel = -1.0e-6  # 惩罚关节速度过大，抑制过激动作
-            dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
-            action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
-            action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
+            lin_vel_z = 0 # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
+            feet_stumble = 0  # 惩罚脚部绊碰（足端受到异常横向冲击）
+            collision = 0  # 惩罚机体/连杆非期望碰撞
+            dof_pos_limits = 0  # 惩罚关节接近或超过位置限位
+            torques = 0  # 惩罚关节力矩过大，降低能耗和电机负担
+            dof_vel = 0  # 惩罚关节速度过大，抑制过激动作
+            dof_acc = 0  # 惩罚关节加速度过大，提升动作平滑性
+            action_rate = 0  # 一阶动作平滑惩罚：限制相邻时刻动作变化
+            action_rate2 = 0  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
 
-            termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
-            
-            #overrides
-            lin_vel_z = -6.0e-4
-            action_rate = -6.0e-3
-            action_rate2 = -6.0e-3
+
+            #flat_reward
+            termination = -0.0
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+            lin_vel_z = -2.0
+            ang_vel_xy = -0.05
+            orientation = -0.
+            torques = -0.00001
+            dof_vel = -0.
+            dof_acc = -2.5e-7
+            base_height = -0.
+            feet_air_time = 1.0
+            collision = -1.
+            feet_stumble = -0.0
+            action_rate = -0.01
+            stand_still = -0.
+
+            # Overrides
+            orientation = -5.0
+            torques = -0.000025
+            feet_air_time = 1.0
+            # feet_contact_forces = -0.01
+            # gait_scheduler = -3
 
 
             
