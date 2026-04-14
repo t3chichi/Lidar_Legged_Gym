@@ -85,9 +85,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
 
             #overrides
-            lin_vel_z = -0.1
-            action_rate = -1.0e-2
-            action_rate2 = -1.0e-2
+            lin_vel_z = -6.0e-4
+            action_rate = -6.0e-3
+            action_rate2 = -6.0e-3
 
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
