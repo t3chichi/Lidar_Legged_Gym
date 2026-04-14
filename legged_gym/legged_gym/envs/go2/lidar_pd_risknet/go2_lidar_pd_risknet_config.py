@@ -70,19 +70,24 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class rewards(Go2RoughCfg.rewards):
         class scales(Go2RoughCfg.rewards.scales):
             # Paper main rewards.
-            vel_avoid = 2.0
-            rays = 1.5
+            vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
+            rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
             # Auxiliary rewards from appendix Table 5.
-            lin_vel_z = -3.0e-4
-            feet_stumble = -2.0e-2
-            collision = -2.0e-2
-            dof_pos_limits = -0.2
-            torques = -1.0e-6
-            dof_vel = -1.0e-6
-            dof_acc = -2.5e-7
-            action_rate = -5.0e-3
-            action_rate2 = -5.0e-3
+            lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
+            feet_stumble = -2.0e-2  # 惩罚脚部绊碰（足端受到异常横向冲击）
+            collision = -2.0e-2  # 惩罚机体/连杆非期望碰撞
+            dof_pos_limits = -0.2  # 惩罚关节接近或超过位置限位
+            torques = -1.0e-6  # 惩罚关节力矩过大，降低能耗和电机负担
+            dof_vel = -1.0e-6  # 惩罚关节速度过大，抑制过激动作
+            dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
+            action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
+            action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
+
+            #overrides
+            lin_vel_z = -0.1
+            action_rate = -1.0e-2
+            action_rate2 = -1.0e-2
 
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
