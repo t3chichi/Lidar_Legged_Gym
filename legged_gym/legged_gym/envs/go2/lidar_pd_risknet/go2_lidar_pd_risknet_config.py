@@ -56,6 +56,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         discrete_obstacle_height_range = [0.02, 0.45]
 
     class commands(Go2RoughCfg.commands):
+        heading_command = False
+        resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.4, 0.8]  # min max [m/s]
             lin_vel_y = [-0.2, 0.2]  # min max [m/s]
