@@ -5,6 +5,7 @@ PD_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 24
 PD_SPHERICAL_ELEVATION = 18
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
+# Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 288
 PD_DISTAL_POINTS = 144
 PD_PROXIMAL_FEATURE_DIM = 187
@@ -37,7 +38,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
         num_observations = PD_PROPRIO_DIM + PD_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
-        # Privileged height map for train-time-only supervision.
+        # Keep critic/aux-supervision dimension aligned with formal training.
         num_privileged_obs = PD_PRIV_HEIGHT_DIM
         # Anti-flip termination gates to avoid upside-down reward exploitation.
         enable_fall_termination = True
@@ -47,19 +48,16 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         fall_base_height_threshold = 0.12
 
     class terrain(Go2RoughCfg.terrain):
-        # Keep heights enabled for privileged supervision channel.
+        # True flat terrain for gait pretraining.
+        mesh_type = 'plane'
         measure_heights = True
-        # Use obstacle-dense terrains for avoidance training without adding extra actors.
         curriculum = False
-        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 1.0]
-        # Random obstacle height per sub-terrain (meters): enables both shorter and taller obstacles.
-        discrete_obstacle_height_range = [0.02, 0.45]
 
     class commands(Go2RoughCfg.commands):
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.4, 0.8]  # min max [m/s]
+            lin_vel_x = [-0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.2, 0.2]  # min max [m/s]
-            ang_vel_yaw = [-0.3, 0.3]    # min max [rad/s]
+            ang_vel_yaw = [-0.5, 0.5]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -82,8 +80,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class rewards(Go2RoughCfg.rewards):
         class scales(Go2RoughCfg.rewards.scales):
             # Paper main rewards.
-            vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
-            rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
+            vel_avoid = 0 # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
+            rays = 0  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
             # Auxiliary rewards from appendix Table 5.
             lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
@@ -97,12 +95,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
 
             termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
-
+            
             #overrides
             lin_vel_z = -6.0e-4
             action_rate = -6.0e-3
             action_rate2 = -6.0e-3
 
+
+            
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
         class obs_scales(Go2RoughCfg.normalization.obs_scales):
@@ -160,7 +160,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class runner(Go2RoughCfgPPO.runner):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
-        num_steps_per_env = 16
-        experiment_name = "go2_lidar_pd_risknet"
+        num_steps_per_env = 24
+        experiment_name = "go2_pd_pretrain"
         run_name = ""
-        max_iterations = 1500
+        max_iterations = 600

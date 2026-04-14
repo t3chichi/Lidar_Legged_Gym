@@ -79,17 +79,31 @@ class Go2LidarPDRiskNet(Go2):
             self.lidar_sensor = None
             return
 
-        if not (hasattr(self, "terrain") and hasattr(self.terrain, "vertices") and hasattr(self.terrain, "triangles")):
-            raise ValueError("go2_lidar_pd_risknet requires trimesh terrain vertices/triangles for lidar rendering")
-
         wp.init()
 
         # Build Warp mesh and mesh_ids (official sample-compatible path).
-        vertices = torch.as_tensor(self.terrain.vertices, device=self.device, dtype=torch.float32).clone()
-        if hasattr(self.cfg.terrain, "border_size"):
-            vertices[:, 0] -= self.cfg.terrain.border_size
-            vertices[:, 1] -= self.cfg.terrain.border_size
-        triangles_i32 = np.asarray(self.terrain.triangles, dtype=np.int32)
+        if hasattr(self, "terrain") and hasattr(self.terrain, "vertices") and hasattr(self.terrain, "triangles"):
+            vertices = torch.as_tensor(self.terrain.vertices, device=self.device, dtype=torch.float32).clone()
+            if hasattr(self.cfg.terrain, "border_size"):
+                vertices[:, 0] -= self.cfg.terrain.border_size
+                vertices[:, 1] -= self.cfg.terrain.border_size
+            triangles_i32 = np.asarray(self.terrain.triangles, dtype=np.int32)
+        elif self.cfg.terrain.mesh_type == "plane":
+            # Plane terrain does not expose mesh buffers by default, so build a simple ground mesh here.
+            plane_size = 100.0
+            vertices = torch.tensor(
+                [
+                    [-plane_size, -plane_size, 0.0],
+                    [plane_size, -plane_size, 0.0],
+                    [plane_size, plane_size, 0.0],
+                    [-plane_size, plane_size, 0.0],
+                ],
+                device=self.device,
+                dtype=torch.float32,
+            )
+            triangles_i32 = np.asarray([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+        else:
+            raise ValueError("go2_lidar_pd_risknet requires trimesh terrain vertices/triangles or plane terrain for lidar rendering")
 
         self._wp_mesh = wp.Mesh(
             points=wp.from_torch(vertices, dtype=wp.vec3),
