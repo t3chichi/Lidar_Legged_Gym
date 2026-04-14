@@ -21,7 +21,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 20.0
+        split_theta_deg = 5.0
 
         n_sectors = 24
         avoid_distance_thresh = 1.0
@@ -39,6 +39,12 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_observations = PD_PROPRIO_DIM + PD_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
         # Privileged height map for train-time-only supervision.
         num_privileged_obs = PD_PRIV_HEIGHT_DIM
+        # Anti-flip termination gates to avoid upside-down reward exploitation.
+        enable_fall_termination = True
+        # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
+        fall_projected_gravity_z_threshold = -0.1
+        # Terminate when base height is unrealistically low (meters).
+        fall_base_height_threshold = 0.12
 
     class terrain(Go2RoughCfg.terrain):
         # Keep heights enabled for privileged supervision channel.
@@ -83,6 +89,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
+
+            termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
 
             #overrides
             lin_vel_z = -6.0e-4

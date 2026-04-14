@@ -215,6 +215,19 @@ class Go2LidarPDRiskNet(Go2):
         # Reward is computed before compute_observations in LeggedRobot.post_physics_step,
         # so V_avoid must be refreshed here to avoid one-step lag.
         self._compute_v_avoid()
+    
+    def check_termination(self):
+        super().check_termination()
+        if not getattr(self.cfg.env, "enable_fall_termination", False):
+            return
+
+        # projected_gravity[:, 2] is close to -1 when upright and increases as the robot flips.
+        g_thresh = float(getattr(self.cfg.env, "fall_projected_gravity_z_threshold", -0.1))
+        h_thresh = float(getattr(self.cfg.env, "fall_base_height_threshold", 0.12))
+
+        flipped = self.projected_gravity[:, 2] > g_thresh
+        low_base = self.base_pos[:, 2] < h_thresh
+        self.reset_buf |= (flipped | low_base)
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
