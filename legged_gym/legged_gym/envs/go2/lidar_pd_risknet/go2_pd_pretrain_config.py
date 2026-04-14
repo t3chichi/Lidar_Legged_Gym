@@ -115,6 +115,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             orientation = -5.0
             torques = -0.000025
             feet_air_time = 1.5
+            lin_vel_z = -3.0
             feet_contact_forces = -0.01
             gait_scheduler = -3
 
