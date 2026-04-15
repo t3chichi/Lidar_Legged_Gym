@@ -559,8 +559,9 @@ class PDRiskNetActorCritic(nn.Module):
                 end - start, t_prox, pn, -1
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_prox, pn, -1)
-            with torch.backends.cudnn.flags(enabled=False):
-                _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
+            # with torch.backends.cudnn.flags(enabled=False):
+            #     _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
+            _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
             prox_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_prox, -1)
         return prox_frame_feat
 
@@ -579,8 +580,9 @@ class PDRiskNetActorCritic(nn.Module):
                 end - start, t_dist, dn, -1
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_dist, dn, -1)
-            with torch.backends.cudnn.flags(enabled=False):
-                _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
+            # with torch.backends.cudnn.flags(enabled=False):
+            #     _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
+            _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
             dist_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_dist, -1)
         return dist_frame_feat
 
