@@ -185,13 +185,47 @@ class PDRiskNetActorCritic(nn.Module):
             if self._dist_points_cache.numel() > 0:
                 self._dist_points_cache[dones == 1] = 0.0
 
+    # def get_hidden_states(self):
+    #     actor_hidden_states = (self.proximal_memory_a.hidden_states, self.distal_memory_a.hidden_states)
+    #     # if actor_hidden_states == (None, None) and self._critic_hidden_state is None:
+    #     #     return (None, None)
+    #     # critic_hidden_states = (self._critic_hidden_state, self._critic_hidden_state)
+    #     # return actor_hidden_states, critic_hidden_states
+    #     return actor_hidden_states, None
+    
     def get_hidden_states(self):
-        actor_hidden_states = (self.proximal_memory_a.hidden_states, self.distal_memory_a.hidden_states)
-        # if actor_hidden_states == (None, None) and self._critic_hidden_state is None:
-        #     return (None, None)
-        # critic_hidden_states = (self._critic_hidden_state, self._critic_hidden_state)
-        # return actor_hidden_states, critic_hidden_states
-        return actor_hidden_states, None
+    # 获取当前近端/远端记忆的隐藏状态（可能为 None）
+        prox_hidden = self.proximal_memory_a.hidden_states
+        dist_hidden = self.distal_memory_a.hidden_states
+
+        # 若两者均为 None，尝试从点云缓存推断 batch_size 并构造零张量
+        if prox_hidden is None and dist_hidden is None:
+            if self._prox_points_cache.numel() > 0:
+                batch_size = self._prox_points_cache.shape[0]
+                device = self._proximal_indices.device
+            else:
+                # 极端情况：无法推断 batch_size，返回全 None（框架会跳过存储）
+                return (None, None)
+            prox_hidden = torch.zeros((1, batch_size, self.proximal_feature_dim), device=device)
+            dist_hidden = torch.zeros((1, batch_size, self.distal_feature_dim), device=device)
+        else:
+            # 若其中一个为 None，则用另一个的 batch/device 补全
+            if prox_hidden is None:
+                batch_size = dist_hidden.shape[1]
+                device = dist_hidden.device
+                prox_hidden = torch.zeros((1, batch_size, self.proximal_feature_dim), device=device)
+            elif dist_hidden is None:
+                batch_size = prox_hidden.shape[1]
+                device = prox_hidden.device
+                dist_hidden = torch.zeros((1, batch_size, self.distal_feature_dim), device=device)
+
+        actor_hidden_states = (prox_hidden, dist_hidden)
+
+        # Critic 无需隐藏状态，但框架期望非空元组，返回与 Actor 第一隐藏状态同形状的零张量
+        dummy_critic = torch.zeros_like(prox_hidden)
+        critic_hidden_states = (dummy_critic, dummy_critic)
+
+        return actor_hidden_states, critic_hidden_states
 
     def _split_actor_hidden_states(self, hidden_states):
         if hidden_states is None:
