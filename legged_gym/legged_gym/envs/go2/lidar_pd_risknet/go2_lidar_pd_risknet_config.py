@@ -171,7 +171,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class runner(Go2RoughCfgPPO.runner):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
-        num_steps_per_env = 20
+        num_steps_per_env = 16
         experiment_name = "go2_lidar_pd_risknet"
         run_name = ""
         max_iterations = 1500
