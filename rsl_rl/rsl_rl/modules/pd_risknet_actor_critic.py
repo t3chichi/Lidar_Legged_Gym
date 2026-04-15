@@ -129,7 +129,7 @@ class PDRiskNetActorCritic(nn.Module):
 
         self._cached_actor_latent = None
         self._cached_proximal_feature = None
-        self._critic_hidden_state = None
+        # self._critic_hidden_state = None
         self._warned_missing_prox_hidden = False
         self._warned_missing_dist_hidden = False
         self.register_buffer("_prox_points_cache", torch.empty(0), persistent=False)
@@ -168,13 +168,14 @@ class PDRiskNetActorCritic(nn.Module):
         self.proximal_memory_a.reset(dones)
         self.distal_memory_a.reset(dones)
         if dones is None:
-            self._critic_hidden_state = None
+            # self._critic_hidden_state = None
             self._prox_points_cache = torch.empty(0, device=self._proximal_indices.device)
             self._dist_points_cache = torch.empty(0, device=self._proximal_indices.device)
             self._prox_points_valid_len = torch.empty(0, dtype=torch.long, device=self._proximal_indices.device)
             self._dist_points_valid_len = torch.empty(0, dtype=torch.long, device=self._proximal_indices.device)
-        elif self._critic_hidden_state is not None:
-            self._critic_hidden_state[..., dones == 1, :] = 0.0
+        # elif self._critic_hidden_state is not None:
+            # self._critic_hidden_state[..., dones == 1, :] = 0.0
+        else:
             if self._prox_points_valid_len.numel() > 0:
                 self._prox_points_valid_len[dones == 1] = 0
             if self._dist_points_valid_len.numel() > 0:
@@ -186,10 +187,11 @@ class PDRiskNetActorCritic(nn.Module):
 
     def get_hidden_states(self):
         actor_hidden_states = (self.proximal_memory_a.hidden_states, self.distal_memory_a.hidden_states)
-        if actor_hidden_states == (None, None) and self._critic_hidden_state is None:
-            return (None, None)
-        critic_hidden_states = (self._critic_hidden_state, self._critic_hidden_state)
-        return actor_hidden_states, critic_hidden_states
+        # if actor_hidden_states == (None, None) and self._critic_hidden_state is None:
+        #     return (None, None)
+        # critic_hidden_states = (self._critic_hidden_state, self._critic_hidden_state)
+        # return actor_hidden_states, critic_hidden_states
+        return actor_hidden_states, None
 
     def _split_actor_hidden_states(self, hidden_states):
         if hidden_states is None:
@@ -201,14 +203,14 @@ class PDRiskNetActorCritic(nn.Module):
                 return hidden_states[0], None
         return hidden_states, None
 
-    def _ensure_critic_hidden_state(self, batch_size: int, device: torch.device, dtype: torch.dtype):
-        if self._critic_hidden_state is None or self._critic_hidden_state.shape[1] != batch_size:
-            # Keep critic hidden-state shape aligned with recurrent latent size for storage/replay compatibility.
-            self._critic_hidden_state = torch.zeros(
-                (1, batch_size, self.distal_feature_dim),
-                device=device,
-                dtype=dtype,
-            )
+    # def _ensure_critic_hidden_state(self, batch_size: int, device: torch.device, dtype: torch.dtype):
+    #     if self._critic_hidden_state is None or self._critic_hidden_state.shape[1] != batch_size:
+    #         # Keep critic hidden-state shape aligned with recurrent latent size for storage/replay compatibility.
+    #         self._critic_hidden_state = torch.zeros(
+    #             (1, batch_size, self.distal_feature_dim),
+    #             device=device,
+    #             dtype=dtype,
+    #         )
 
     def _warn_missing_hidden_once(self, branch: str):
         if branch == "prox" and (not self._warned_missing_prox_hidden):
@@ -635,10 +637,10 @@ class PDRiskNetActorCritic(nn.Module):
                 feat_dim=self.distal_feature_dim,
                 branch_name="dist",
             )
-            if observations.dim() == 2:
-                self._ensure_critic_hidden_state(observations.shape[0], observations.device, observations.dtype)
-            elif observations.dim() == 3:
-                self._ensure_critic_hidden_state(observations.shape[1], observations.device, observations.dtype)
+            # if observations.dim() == 2:
+            #     self._ensure_critic_hidden_state(observations.shape[0], observations.device, observations.dtype)
+            # elif observations.dim() == 3:
+            #     self._ensure_critic_hidden_state(observations.shape[1], observations.device, observations.dtype)
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
 
@@ -671,16 +673,20 @@ class PDRiskNetActorCritic(nn.Module):
 
     def evaluate(self, critic_observations, masks=None, hidden_states=None, **kwargs):
         if critic_observations.shape[-1] == self.privileged_critic_dim:
-            if masks is None:
-                if critic_observations.dim() == 2:
-                    self._ensure_critic_hidden_state(
-                        critic_observations.shape[0], critic_observations.device, critic_observations.dtype
-                    )
-                elif critic_observations.dim() == 3:
-                    self._ensure_critic_hidden_state(
-                        critic_observations.shape[1], critic_observations.device, critic_observations.dtype
-                    )
-            elif critic_observations.dim() == 3:
+            # if masks is None:
+            #     if critic_observations.dim() == 2:
+            #         self._ensure_critic_hidden_state(
+            #             critic_observations.shape[0], critic_observations.device, critic_observations.dtype
+            #         )
+            #     elif critic_observations.dim() == 3:
+            #         self._ensure_critic_hidden_state(
+            #             critic_observations.shape[1], critic_observations.device, critic_observations.dtype
+            #         )
+            # elif critic_observations.dim() == 3:
+            #     critic_observations = unpad_trajectories(critic_observations, masks).squeeze(0)
+            # return self.critic(critic_observations)
+            # Privileged observation: direct feed-forward.
+            if masks is not None and critic_observations.dim() == 3:
                 critic_observations = unpad_trajectories(critic_observations, masks).squeeze(0)
             return self.critic(critic_observations)
 
