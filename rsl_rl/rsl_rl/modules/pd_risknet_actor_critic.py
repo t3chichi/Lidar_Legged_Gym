@@ -538,8 +538,8 @@ class PDRiskNetActorCritic(nn.Module):
             self._roll_points_cache_with_frame(dist_cache, dist_valid_len, dist_frame_points, valid_mask)
 
             # Encode the current cached windows immediately to avoid storing huge coordinate snapshots.
-            prox_feat_seq.append(self._encode_proximal_points_chunked(prox_cache))
-            dist_feat_seq.append(self._encode_distal_points_chunked(dist_cache))
+            prox_feat_seq.append(self._encode_proximal_points_chunked(prox_cache.clone()))
+            dist_feat_seq.append(self._encode_distal_points_chunked(dist_cache.clone()))
 
         return torch.stack(prox_feat_seq, dim=0), torch.stack(dist_feat_seq, dim=0)
 
@@ -560,7 +560,7 @@ class PDRiskNetActorCritic(nn.Module):
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_prox, pn, -1)
             with torch.backends.cudnn.flags(enabled=False):
-                _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=False)
+                _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
             prox_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_prox, -1)
         return prox_frame_feat
 
@@ -580,7 +580,7 @@ class PDRiskNetActorCritic(nn.Module):
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_dist, dn, -1)
             with torch.backends.cudnn.flags(enabled=False):
-                _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=False)
+                _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
             dist_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_dist, -1)
         return dist_frame_feat
 
@@ -731,15 +731,41 @@ class PDRiskNetActorCritic(nn.Module):
         if self._cached_proximal_feature is None:
             return torch.zeros((), device=privileged_heights.device)
 
-        if privileged_heights.shape[-1] == self.privileged_height_dim:
-            height_target = privileged_heights
-        elif privileged_heights.shape[-1] == self.privileged_critic_dim and self.privileged_critic_dim >= self.privileged_height_dim:
-            # Critic privileged obs may be [proprio, heights]; supervise with trailing height channels.
-            height_target = privileged_heights[..., -self.privileged_height_dim :]
+        # 取序列最后一个时间步的特征（或平均池化）
+        if self._cached_proximal_feature.dim() == 3:
+            # shape: [batch, seq_len, feat_dim] -> 取最后一步
+            prox_feat = self._cached_proximal_feature[:, -1, :]
         else:
-            return torch.zeros((), device=privileged_heights.device)
+            prox_feat = self._cached_proximal_feature
 
-        pred = self.height_supervisor(self._cached_proximal_feature)
+        pred = self.height_supervisor(prox_feat)  # [batch, height_dim]
+
+        # 处理特权观测，同样取最后一步
+        if privileged_heights.dim() == 3:
+            # [batch, seq_len, critic_dim] -> 取最后一步
+            priv_obs = privileged_heights[:, -1, :]
+        else:
+            priv_obs = privileged_heights
+
+        # 提取高度目标
+        actual_dim = priv_obs.shape[-1]
+        if actual_dim == self.privileged_height_dim:
+            height_target = priv_obs
+        elif actual_dim == self.privileged_critic_dim:
+            height_target = priv_obs[..., -self.privileged_height_dim:]
+        else:
+            if actual_dim >= self.privileged_height_dim:
+                height_target = priv_obs[..., -self.privileged_height_dim:]
+            else:
+                print(f"[WARNING] Aux loss skip: actual dim {actual_dim}, expected {self.privileged_height_dim}")
+                return torch.zeros((), device=privileged_heights.device)
+
+        # 末维对齐（防止预测维度意外偏差）
+        if pred.shape[-1] != height_target.shape[-1]:
+            min_dim = min(pred.shape[-1], height_target.shape[-1])
+            pred = pred[..., :min_dim]
+            height_target = height_target[..., :min_dim]
+
         return self.privileged_supervision_coef * torch.mean(torch.square(pred - height_target))
 
     def load_state_dict(self, state_dict, strict=True):
