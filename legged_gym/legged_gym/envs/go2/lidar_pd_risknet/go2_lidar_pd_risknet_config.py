@@ -140,7 +140,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
         actor_hidden_dims = [1024, 512, 256, 128]
-        critic_hidden_dims = [1024, 512, 256, 128]
+        critic_hidden_dims = [512, 256, 128]
         perception_enabled = True
         history_length = OBS_HISTORY_LENGTH
         proximal_history_length = PROX_HISTORY_LENGTH
