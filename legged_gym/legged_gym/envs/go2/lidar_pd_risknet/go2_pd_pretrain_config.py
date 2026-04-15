@@ -1,7 +1,9 @@
 from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPPO
 
 
-PD_HISTORY_LENGTH = 10
+OBS_HISTORY_LENGTH = 1
+PROX_HISTORY_LENGTH = 10
+DIST_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 24
 PD_SPHERICAL_ELEVATION = 18
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
@@ -12,12 +14,13 @@ PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
 PD_PRIV_HEIGHT_DIM = 187
+PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class pd_risknet:
         enabled = True
-        history_length = PD_HISTORY_LENGTH
+        history_length = OBS_HISTORY_LENGTH
         proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proximal_points = PD_PROXIMAL_POINTS
@@ -37,9 +40,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
-        num_observations = PD_PROPRIO_DIM + PD_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
-        # Keep critic/aux-supervision dimension aligned with formal training.
-        num_privileged_obs = PD_PRIV_HEIGHT_DIM
+        num_observations = PD_PROPRIO_DIM + OBS_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
+        # Critic input uses proprio (48) + privileged heights (187).
+        num_privileged_obs = PD_PRIV_CRITIC_DIM
         # Anti-flip termination gates to avoid upside-down reward exploitation.
         enable_fall_termination = True
         # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
@@ -51,6 +54,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # True flat terrain for gait pretraining.
         mesh_type = 'plane'
         measure_heights = True
+        measured_points_x = [-2.8, -2.45, -2.1, -1.75, -1.4, -1.05, -0.7, -0.35, 0.0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.45, 2.8,]
+        measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
         curriculum = False
 
     class commands(Go2RoughCfg.commands):
@@ -84,7 +89,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             # Paper main rewards.
             vel_avoid = 0 # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
             rays = 0  # 距离最大化奖励：鼓励与障碍保持更大安全间距
-
+            
             lin_vel_z = 0 # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
             feet_stumble = 0  # 惩罚脚部绊碰（足端受到异常横向冲击）
             collision = 0  # 惩罚机体/连杆非期望碰撞
@@ -129,9 +134,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.4, 1.0]
+        friction_range = [0.5, 1.5]
         randomize_base_mass = True
-        added_mass_range = [-1.0, 5.0]
+        added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
         lidar_point_mask_ratio = 0.10
@@ -153,15 +158,18 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         actor_hidden_dims = [1024, 512, 256, 128]
         critic_hidden_dims = [1024, 512, 256, 128]
         perception_enabled = True
-        history_length = PD_HISTORY_LENGTH
+        history_length = OBS_HISTORY_LENGTH
+        proximal_history_length = PROX_HISTORY_LENGTH
+        distal_history_length = DIST_HISTORY_LENGTH
         num_lidar_points = PD_NUM_LIDAR_POINTS
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 20.0
+        split_theta_deg = 5.0
         proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proprio_obs_dim = PD_PROPRIO_DIM
         privileged_height_dim = PD_PRIV_HEIGHT_DIM
+        privileged_critic_dim = PD_PRIV_CRITIC_DIM
         privileged_supervision_coef = 1.0
 
     class algorithm(Go2RoughCfgPPO.algorithm):
@@ -179,7 +187,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class runner(Go2RoughCfgPPO.runner):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
-        num_steps_per_env = 16
+        num_steps_per_env = 24
         experiment_name = "go2_pd_pretrain"
         run_name = ""
         max_iterations = 600

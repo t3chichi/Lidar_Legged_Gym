@@ -159,7 +159,7 @@ class Go2LidarPDRiskNet(Go2):
         # Keep sensor attached to base with configurable translation offset.
         self.sensor_quat_tensor.copy_(quat_mul(self.base_quat, self._sensor_offset_quat))
         self.sensor_pos_tensor.copy_(self.base_pos + quat_apply(self.base_quat, self._sensor_translation))
-        
+
         lidar_points, lidar_dist = self.lidar_sensor.update()
         points_sensor = lidar_points.view(self.num_envs, -1, 3)
         n_points = points_sensor.shape[1]
@@ -229,7 +229,7 @@ class Go2LidarPDRiskNet(Go2):
         # Reward is computed before compute_observations in LeggedRobot.post_physics_step,
         # so V_avoid must be refreshed here to avoid one-step lag.
         self._compute_v_avoid()
-    
+
     def check_termination(self):
         super().check_termination()
         if not getattr(self.cfg.env, "enable_fall_termination", False):
@@ -272,7 +272,7 @@ class Go2LidarPDRiskNet(Go2):
 
     def compute_observations(self):
         # Keep base proprio order identical to Go2/LeggedRobot, then append LiDAR history.
-        self.obs_buf = torch.cat((
+        proprio_obs = torch.cat((
             self.base_lin_vel * self.obs_scales.lin_vel,
             self.base_ang_vel * self.obs_scales.ang_vel,
             self.projected_gravity,
@@ -280,13 +280,17 @@ class Go2LidarPDRiskNet(Go2):
             (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
             self.dof_vel * self.obs_scales.dof_vel,
             self.actions,
+        ), dim=-1)
+
+        self.obs_buf = torch.cat((
+            proprio_obs,
             self.lidar_history.reshape(self.num_envs, -1),
         ), dim=-1)
         self._compute_pd_risknet_features()
 
-        # Privileged channel: terrain height samples for train-time-only supervision.
+        # Privileged channel for critic: proprio + terrain height samples.
         if self.privileged_obs_buf is not None:
-            self.privileged_obs_buf = self.measured_heights
+            self.privileged_obs_buf = torch.cat((proprio_obs, self.measured_heights), dim=-1)
 
         if self.add_noise:
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec

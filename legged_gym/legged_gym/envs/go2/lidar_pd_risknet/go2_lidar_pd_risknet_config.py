@@ -1,22 +1,26 @@
 from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPPO
 
 
-PD_HISTORY_LENGTH = 10
+OBS_HISTORY_LENGTH = 1
+PROX_HISTORY_LENGTH = 10
+DIST_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 24
 PD_SPHERICAL_ELEVATION = 18
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
+# Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 288
 PD_DISTAL_POINTS = 144
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
 PD_PRIV_HEIGHT_DIM = 187
+PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class pd_risknet:
         enabled = True
-        history_length = PD_HISTORY_LENGTH
+        history_length = OBS_HISTORY_LENGTH
         proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proximal_points = PD_PROXIMAL_POINTS
@@ -36,9 +40,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
-        num_observations = PD_PROPRIO_DIM + PD_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
-        # Privileged height map for train-time-only supervision.
-        num_privileged_obs = PD_PRIV_HEIGHT_DIM
+        num_observations = PD_PROPRIO_DIM + OBS_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
+        # Critic input uses proprio (48) + privileged heights (187).
+        num_privileged_obs = PD_PRIV_CRITIC_DIM
         # Anti-flip termination gates to avoid upside-down reward exploitation.
         enable_fall_termination = True
         # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
@@ -49,6 +53,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class terrain(Go2RoughCfg.terrain):
         # Keep heights enabled for privileged supervision channel.
         measure_heights = True
+        measured_points_x = [-2.8, -2.45, -2.1, -1.75, -1.4, -1.05, -0.7, -0.35, 0.0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.45, 2.8,]
+        measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
         # Use obstacle-dense terrains for avoidance training without adding extra actors.
         curriculum = False
         terrain_proportions = [0.0, 0.0, 0.0, 0.0, 1.0]
@@ -99,12 +105,12 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
 
             termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
-
+            
             #overrides
-            lin_vel_z = -6.0e-4
-            action_rate = -6.0e-3
-            action_rate2 = -6.0e-3
-
+            # lin_vel_z = -6.0e-4
+            # action_rate = -6.0e-3
+            # action_rate2 = -6.0e-3
+            
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
         class obs_scales(Go2RoughCfg.normalization.obs_scales):
@@ -136,15 +142,18 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         actor_hidden_dims = [1024, 512, 256, 128]
         critic_hidden_dims = [1024, 512, 256, 128]
         perception_enabled = True
-        history_length = PD_HISTORY_LENGTH
+        history_length = OBS_HISTORY_LENGTH
+        proximal_history_length = PROX_HISTORY_LENGTH
+        distal_history_length = DIST_HISTORY_LENGTH
         num_lidar_points = PD_NUM_LIDAR_POINTS
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 20.0
+        split_theta_deg = 5.0
         proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proprio_obs_dim = PD_PROPRIO_DIM
         privileged_height_dim = PD_PRIV_HEIGHT_DIM
+        privileged_critic_dim = PD_PRIV_CRITIC_DIM
         privileged_supervision_coef = 1.0
 
     class algorithm(Go2RoughCfgPPO.algorithm):
@@ -162,7 +171,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class runner(Go2RoughCfgPPO.runner):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
-        num_steps_per_env = 16
+        num_steps_per_env = 24
         experiment_name = "go2_lidar_pd_risknet"
         run_name = ""
         max_iterations = 1500
