@@ -504,8 +504,8 @@ class PDRiskNetActorCritic(nn.Module):
             self._roll_points_cache_with_frame(dist_cache, dist_valid_len, dist_frame_points, valid_mask)
 
             # Encode the current cached windows immediately to avoid storing huge coordinate snapshots.
-            prox_feat_seq.append(self._encode_proximal_points_chunked(prox_cache.clone()))
-            dist_feat_seq.append(self._encode_distal_points_chunked(dist_cache.clone()))
+            prox_feat_seq.append(self._encode_proximal_points_chunked(prox_cache))
+            dist_feat_seq.append(self._encode_distal_points_chunked(dist_cache))
 
         return torch.stack(prox_feat_seq, dim=0), torch.stack(dist_feat_seq, dim=0)
 
