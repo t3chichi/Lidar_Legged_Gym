@@ -25,6 +25,8 @@ class Go2LidarPDRiskNet(Go2):
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
 
+        print(f"[INIT] measured_heights.shape: {self.measured_heights.shape}")
+
     def _get_noise_scale_vec(self, cfg):
         """Use Go2 proprio noise only; keep LiDAR history channels noise-free by default.
 
