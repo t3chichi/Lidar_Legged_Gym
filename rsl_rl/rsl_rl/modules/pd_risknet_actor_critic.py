@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
+from torch.utils.checkpoint import checkpoint
 
 from rsl_rl.networks import Memory
 from rsl_rl.utils import resolve_nn_activation, unpad_trajectories
@@ -523,7 +524,7 @@ class PDRiskNetActorCritic(nn.Module):
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_prox, pn, -1)
             with torch.backends.cudnn.flags(enabled=False):
-                _, chunk_h = self.proximal_gru(chunk_seq)
+                _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=False)
             prox_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_prox, -1)
         return prox_frame_feat
 
@@ -543,7 +544,7 @@ class PDRiskNetActorCritic(nn.Module):
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_dist, dn, -1)
             with torch.backends.cudnn.flags(enabled=False):
-                _, chunk_h = self.distal_spatial_gru(chunk_seq)
+                _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=False)
             dist_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_dist, -1)
         return dist_frame_feat
 
