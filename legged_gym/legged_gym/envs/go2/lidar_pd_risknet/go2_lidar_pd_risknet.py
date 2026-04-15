@@ -25,8 +25,6 @@ class Go2LidarPDRiskNet(Go2):
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
 
-        print(f"[INIT] measured_heights.shape: {self.measured_heights.shape}")
-
     def _get_noise_scale_vec(self, cfg):
         """Use Go2 proprio noise only; keep LiDAR history channels noise-free by default.
 
@@ -292,6 +290,12 @@ class Go2LidarPDRiskNet(Go2):
 
         # Privileged channel for critic: proprio + terrain height samples.
         if self.privileged_obs_buf is not None:
+
+            # 临时诊断打印（确认后可注释)
+            if not hasattr(self, '_printed_height_shape'):
+                print(f"[INFO] measured_heights.shape: {self.measured_heights.shape}")
+                self._printed_height_shape = True
+
             self.privileged_obs_buf = torch.cat((proprio_obs, self.measured_heights), dim=-1)
 
         if self.add_noise:
