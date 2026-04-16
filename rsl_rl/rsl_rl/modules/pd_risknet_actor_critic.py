@@ -308,20 +308,24 @@ class PDRiskNetActorCritic(nn.Module):
         feat_dim: int,
         branch_name: str,
     ) -> torch.Tensor:
-        seq_in, grouped, window_len, batch_size, _ = self._frame_window_to_seq(frame_feat)
+        # 训练序列模式特判
+        if masks is not None and frame_feat.dim() == 3:
+            seq_in = frame_feat                 # (T, B, F)
+            grouped = False
+            window_len = 1
+            batch_size = frame_feat.shape[1]
+        else:
+            seq_in, grouped, window_len, batch_size, _ = self._frame_window_to_seq(frame_feat)
 
         if masks is not None:
             if hidden_states is None:
                 self._warn_missing_hidden_once(branch_name)
                 hidden_states = self._init_actor_hidden_like(frame_feat, feat_dim)
-            seq_out, _ = memory.rnn(seq_in, hidden_states)
-            feat = self._collapse_window_output(seq_out, grouped, window_len, batch_size)
-            if feat.dim() == 3:
-                feat = unpad_trajectories(feat, masks)
-                if feat.dim() == 3:
-                    feat = feat.squeeze(0)
-            return feat
+            seq_out, _ = memory.rnn(seq_in, hidden_states)   # (T, B, F)
+            # 训练分支直接返回序列，不再压缩时间维，由外部处理 unpad
+            return seq_out
 
+        # 推理分支
         seq_out, memory.hidden_states = memory.rnn(seq_in, memory.hidden_states)
         return self._collapse_window_output(seq_out, grouped, window_len, batch_size)
 
@@ -509,37 +513,35 @@ class PDRiskNetActorCritic(nn.Module):
         if lidar_points_seq.dim() != 4:
             raise ValueError(f"Expected lidar_points_seq shape (T, B, N, 3), got rank {lidar_points_seq.dim()}")
 
-        seq_len, batch_size, _, _ = lidar_points_seq.shape
-        prox_cache = torch.zeros(
-            (batch_size, self.proximal_history_length, self.proximal_points, 3),
-            device=lidar_points_seq.device,
-            dtype=lidar_points_seq.dtype,
-        )
-        dist_cache = torch.zeros(
-            (batch_size, self.distal_history_length, self.distal_points, 3),
-            device=lidar_points_seq.device,
-            dtype=lidar_points_seq.dtype,
-        )
-        prox_valid_len = torch.zeros((batch_size,), device=lidar_points_seq.device, dtype=torch.long)
-        dist_valid_len = torch.zeros((batch_size,), device=lidar_points_seq.device, dtype=torch.long)
+        seq_len, batch_size, num_points, _ = lidar_points_seq.shape
 
         prox_feat_seq = []
         dist_feat_seq = []
+
         for t in range(seq_len):
-            if masks is None:
-                valid_mask = torch.ones((batch_size,), dtype=torch.bool, device=lidar_points_seq.device)
-            else:
-                valid_mask = masks[t].to(dtype=torch.bool)
+            # 获取当前帧点云 [B, N, 3]
+            points_t = lidar_points_seq[t]
 
-            prox_frame_points, dist_frame_points = self._compute_sampled_sorted_points_frame(lidar_points_seq[t])
-            self._roll_points_cache_with_frame(prox_cache, prox_valid_len, prox_frame_points, valid_mask)
-            self._roll_points_cache_with_frame(dist_cache, dist_valid_len, dist_frame_points, valid_mask)
+            # 对当前帧进行采样、排序，得到近端和远端点云 [B, prox_points, 3] 和 [B, dist_points, 3]
+            prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(points_t)
 
-            # Encode the current cached windows immediately to avoid storing huge coordinate snapshots.
-            prox_feat_seq.append(self._encode_proximal_points_chunked(prox_cache.clone()))
-            dist_feat_seq.append(self._encode_distal_points_chunked(dist_cache.clone()))
+            # 空间编码：需要将单帧点云扩展一个时间维度，因为现有编码函数期望输入 [B, T, points, 3]
+            # 这里 T=1
+            prox_points_t = prox_points_t.unsqueeze(1)  # [B, 1, prox_points, 3]
+            dist_points_t = dist_points_t.unsqueeze(1)  # [B, 1, dist_points, 3]
 
-        return torch.stack(prox_feat_seq, dim=0), torch.stack(dist_feat_seq, dim=0)
+            # 编码得到空间特征 [B, 1, feature_dim]，然后去掉时间维
+            prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
+            dist_feat_t = self._encode_distal_points_chunked(dist_points_t).squeeze(1)    # [B, distal_feature_dim]
+
+            prox_feat_seq.append(prox_feat_t)
+            dist_feat_seq.append(dist_feat_t)
+
+        # 堆叠为序列 [T, B, F]
+        prox_feat_seq = torch.stack(prox_feat_seq, dim=0)
+        dist_feat_seq = torch.stack(dist_feat_seq, dim=0)
+
+        return prox_feat_seq, dist_feat_seq
 
     def _encode_proximal_points_chunked(self, prox_points: torch.Tensor) -> torch.Tensor:
         flat_batch_size, t_prox, pn, _ = prox_points.shape
@@ -598,29 +600,28 @@ class PDRiskNetActorCritic(nn.Module):
         proprio, lidar_frame = self._split_obs(observations)
 
         if observations.dim() == 2:
-            # 推理/采样：构建在线滑动窗口
+            # 推理/采样：构建在线滑动窗口（保持不变）
             prox_points, dist_points = self._build_online_points_windows(lidar_frame)
             seq_len = None
             batch_size = lidar_frame.shape[0]
         elif observations.dim() == 3:
             # 训练更新：lidar_frame 形状为 (T, B, N, 3)
-            seq_len, batch_size, _, _ = lidar_frame.shape
+            # 新函数返回 [T, B, F] 的特征序列
             prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(lidar_frame, masks)
+            # 直接返回，无需后续的空间编码（已在 _build_replay_frame_features 中完成）
             return proprio, prox_frame_feat, dist_frame_feat
         else:
             raise ValueError(f"Unsupported observations rank: {observations.dim()}")
 
+        # 以下为推理分支（observations.dim() == 2）的处理
         _, t_prox, _, _ = prox_points.shape
         _, t_dist, _, _ = dist_points.shape
 
-        # Proximal/Distal branches: encode with chunking to control activation memory.
+        # 对缓存窗口进行空间编码（推理时仍需缓存，因为在线环境只提供单帧，需要历史窗口）
         prox_frame_feat = self._encode_proximal_points_chunked(prox_points)
         dist_frame_feat = self._encode_distal_points_chunked(dist_points)
 
-        if observations.dim() == 3:
-            prox_frame_feat = prox_frame_feat.reshape(seq_len, batch_size, t_prox, -1)
-            dist_frame_feat = dist_frame_feat.reshape(seq_len, batch_size, t_dist, -1)
-
+        # 推理时返回的特征形状为 [B, t_prox, F] 或 [B, t_dist, F]
         return proprio, prox_frame_feat, dist_frame_feat
 
     def _build_actor_latent(
@@ -633,6 +634,7 @@ class PDRiskNetActorCritic(nn.Module):
         prox_hidden_states, dist_hidden_states = self._split_actor_hidden_states(hidden_states)
 
         if masks is not None:
+            # 训练分支：保留时间维度，之后统一展平
             prox_feat = self._run_actor_memory(
                 self.proximal_memory_a,
                 prox_frame_feat,
@@ -640,7 +642,7 @@ class PDRiskNetActorCritic(nn.Module):
                 prox_hidden_states,
                 self.proximal_feature_dim,
                 "prox",
-            )
+            )  # (T, B, F)
             dist_feat = self._run_actor_memory(
                 self.distal_memory_a,
                 dist_frame_feat,
@@ -648,12 +650,15 @@ class PDRiskNetActorCritic(nn.Module):
                 dist_hidden_states,
                 self.distal_feature_dim,
                 "dist",
-            )
+            )  # (T, B, F)
 
-            proprio = unpad_trajectories(proprio, masks)
-            if proprio.dim() == 3:
-                proprio = proprio.squeeze(0)
+            # 展平时间-批次维度
+            proprio = unpad_trajectories(proprio, masks)      # (T*B, proprio_dim)
+            prox_feat = unpad_trajectories(prox_feat, masks)  # (T*B, F)
+            dist_feat = unpad_trajectories(dist_feat, masks)  # (T*B, F)
+
         else:
+            # 推理分支：单步输入，输出二维
             prox_feat = self._run_actor_memory(
                 self.proximal_memory_a,
                 prox_frame_feat,
@@ -661,7 +666,7 @@ class PDRiskNetActorCritic(nn.Module):
                 hidden_states=None,
                 feat_dim=self.proximal_feature_dim,
                 branch_name="prox",
-            )
+            )  # (B, F)
             dist_feat = self._run_actor_memory(
                 self.distal_memory_a,
                 dist_frame_feat,
@@ -669,11 +674,8 @@ class PDRiskNetActorCritic(nn.Module):
                 hidden_states=None,
                 feat_dim=self.distal_feature_dim,
                 branch_name="dist",
-            )
-            # if observations.dim() == 2:
-            #     self._ensure_critic_hidden_state(observations.shape[0], observations.device, observations.dtype)
-            # elif observations.dim() == 3:
-            #     self._ensure_critic_hidden_state(observations.shape[1], observations.device, observations.dtype)
+            )  # (B, F)
+            # proprio 此时已经是二维 (B, proprio_dim)
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
 
