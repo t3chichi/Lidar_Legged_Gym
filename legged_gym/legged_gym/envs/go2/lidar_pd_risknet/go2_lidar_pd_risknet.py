@@ -48,15 +48,15 @@ class Go2LidarPDRiskNet(Go2):
 
     def _init_pd_risknet_buffers(self):
         cfg = self.cfg.pd_risknet
-        self.lidar_history = torch.zeros(
-            self.num_envs,
-            int(cfg.history_length),
-            int(cfg.num_lidar_points),
-            3,
-            device=self.device,
-            dtype=torch.float,
-            requires_grad=False,
-        )
+        # self.lidar_history = torch.zeros(
+        #     self.num_envs,
+        #     int(cfg.history_length),
+        #     int(cfg.num_lidar_points),
+        #     3,
+        #     device=self.device,
+        #     dtype=torch.float,
+        #     requires_grad=False,
+        # )
         self.lidar_points_base = torch.zeros(
             self.num_envs,
             int(cfg.num_lidar_points),
@@ -192,8 +192,8 @@ class Go2LidarPDRiskNet(Go2):
         self.lidar_points_base.copy_(points_base)
         self.raycast_distances.copy_(dist)
         # Use roll to avoid overlapping in-place memory writes during history shift.
-        self.lidar_history = torch.roll(self.lidar_history, shifts=-1, dims=1)
-        self.lidar_history[:, -1].copy_(self.lidar_points_base)
+        # self.lidar_history = torch.roll(self.lidar_history, shifts=-1, dims=1)
+        # self.lidar_history[:, -1].copy_(self.lidar_points_base)
 
     def _compute_v_avoid(self):
         cfg = self.cfg.pd_risknet
@@ -247,7 +247,7 @@ class Go2LidarPDRiskNet(Go2):
         super().reset_idx(env_ids)
         if len(env_ids) == 0:
             return
-        self.lidar_history[env_ids] = 0.0
+        # self.lidar_history[env_ids] = 0.0
         self.lidar_points_base[env_ids] = 0.0
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
@@ -284,7 +284,7 @@ class Go2LidarPDRiskNet(Go2):
 
         self.obs_buf = torch.cat((
             proprio_obs,
-            self.lidar_history.reshape(self.num_envs, -1),
+            self.lidar_points_base.reshape(self.num_envs, -1),
         ), dim=-1)
         self._compute_pd_risknet_features()
 

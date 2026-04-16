@@ -71,7 +71,7 @@ class PDRiskNetActorCritic(nn.Module):
         self.privileged_supervision_coef = float(privileged_supervision_coef)
         self.num_actions = num_actions
 
-        lidar_expected_dim = self.history_length * self.num_lidar_points * 3
+        lidar_expected_dim = self.num_lidar_points * 3   # 仅单帧点云输入
         if num_actor_obs < self.proprio_obs_dim + lidar_expected_dim:
             raise ValueError(
                 f"PDRiskNetActorCritic expects at least {self.proprio_obs_dim + lidar_expected_dim} actor obs dims, got {num_actor_obs}"
@@ -326,23 +326,21 @@ class PDRiskNetActorCritic(nn.Module):
         return self._collapse_window_output(seq_out, grouped, window_len, batch_size)
 
     def _split_obs(self, observations: torch.Tensor):
+        # 观测布局：[proprio (48)] + [single frame point cloud (N*3)]
         if observations.dim() == 2:
-            proprio = observations[:, : self.proprio_obs_dim]
-            lidar_flat = observations[
-                :, self.proprio_obs_dim : self.proprio_obs_dim + self.history_length * self.num_lidar_points * 3
-            ]
-            lidar_hist = lidar_flat.reshape(-1, self.history_length, self.num_lidar_points, 3)
-            return proprio, lidar_hist
+            proprio = observations[:, :self.proprio_obs_dim]
+            lidar_flat = observations[:, self.proprio_obs_dim:]
+            # 单帧点云形状 (batch, N, 3)
+            lidar_frame = lidar_flat.reshape(-1, self.num_lidar_points, 3)
+            return proprio, lidar_frame
         if observations.dim() == 3:
             t, b, _ = observations.shape
             obs_flat = observations.reshape(t * b, -1)
-            proprio = obs_flat[:, : self.proprio_obs_dim].reshape(t, b, self.proprio_obs_dim)
-            lidar_flat = obs_flat[
-                :, self.proprio_obs_dim : self.proprio_obs_dim + self.history_length * self.num_lidar_points * 3
-            ]
-            lidar_hist = lidar_flat.reshape(t, b, self.history_length, self.num_lidar_points, 3)
-            return proprio, lidar_hist
-        raise ValueError(f"Unsupported observations rank: {observations.dim()}")
+            proprio = obs_flat[:, :self.proprio_obs_dim].reshape(t, b, self.proprio_obs_dim)
+            lidar_flat = obs_flat[:, self.proprio_obs_dim:]
+            # 训练序列单帧形状 (T, B, N, 3)
+            lidar_frame = lidar_flat.reshape(t, b, self.num_lidar_points, 3)
+            return proprio, lidar_frame
 
     def _fps_indices_single(self, points: torch.Tensor, k: int) -> torch.Tensor:
         n = points.shape[0]
@@ -597,18 +595,17 @@ class PDRiskNetActorCritic(nn.Module):
         return torch.gather(points, dim=2, index=order_exp)
 
     def _encode_perception(self, observations: torch.Tensor, masks: torch.Tensor | None = None):
-        proprio, lidar_hist = self._split_obs(observations)
+        proprio, lidar_frame = self._split_obs(observations)
 
         if observations.dim() == 2:
-            lidar_points_frame = lidar_hist[:, -1, :, :]
-            prox_points, dist_points = self._build_online_points_windows(lidar_points_frame)
+            # 推理/采样：构建在线滑动窗口
+            prox_points, dist_points = self._build_online_points_windows(lidar_frame)
             seq_len = None
-            batch_size = lidar_points_frame.shape[0]
-            flat_batch_size = batch_size
+            batch_size = lidar_frame.shape[0]
         elif observations.dim() == 3:
-            seq_len, batch_size, _, _, _ = lidar_hist.shape
-            lidar_points_seq = lidar_hist[:, :, -1, :, :]
-            prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(lidar_points_seq, masks)
+            # 训练更新：lidar_frame 形状为 (T, B, N, 3)
+            seq_len, batch_size, _, _ = lidar_frame.shape
+            prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(lidar_frame, masks)
             return proprio, prox_frame_feat, dist_frame_feat
         else:
             raise ValueError(f"Unsupported observations rank: {observations.dim()}")
