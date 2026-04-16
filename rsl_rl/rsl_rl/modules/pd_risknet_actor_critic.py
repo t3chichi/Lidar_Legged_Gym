@@ -551,7 +551,7 @@ class PDRiskNetActorCritic(nn.Module):
             dtype=prox_points.dtype,
         )
         # Chunk flat batch to keep GRU/MLP activations within small GPU memory budgets.
-        chunk_size = 64
+        chunk_size = 128
         for start in range(0, flat_batch_size, chunk_size):
             end = min(start + chunk_size, flat_batch_size)
             chunk = prox_points[start:end]
@@ -572,7 +572,7 @@ class PDRiskNetActorCritic(nn.Module):
             device=dist_points.device,
             dtype=dist_points.dtype,
         )
-        chunk_size = 64
+        chunk_size = 128
         for start in range(0, flat_batch_size, chunk_size):
             end = min(start + chunk_size, flat_batch_size)
             chunk = dist_points[start:end]
