@@ -157,6 +157,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         privileged_supervision_coef = 1.0
 
     class algorithm(Go2RoughCfgPPO.algorithm):
+        amp_enabled = True   # 启用混合精度
         clip_param = 0.2
         lam = 0.95
         gamma = 0.99

@@ -8,12 +8,16 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.cuda.amp import GradScaler, autocast
+
 from itertools import chain
 from typing import Optional, Union
 
 from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
+
+
 
 
 class PPO:
@@ -45,6 +49,7 @@ class PPO:
         symmetry_cfg: Optional[dict] = None,
         # Distributed training parameters
         multi_gpu_cfg: Optional[dict] = None,
+        amp_enabled: bool = False,
     ):
         # device-related parameters
         self.device = device
@@ -90,6 +95,9 @@ class PPO:
             self.symmetry = symmetry_cfg
         else:
             self.symmetry = None
+
+        self.amp_enabled = amp_enabled
+        self.scaler = GradScaler(enabled=self.amp_enabled)
 
         # PPO components
         self.policy = policy
@@ -271,27 +279,28 @@ class PPO:
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
             # -- actor
-            self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
-            actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
-            # -- critic
-            value_batch = self.policy.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
-            # -- entropy
-            # we only keep the entropy of the first augmentation (the original one)
-            mu_batch = self.policy.action_mean[:original_batch_size]
-            sigma_batch = self.policy.action_std[:original_batch_size]
-            entropy_batch = self.policy.entropy[:original_batch_size]
+            with autocast(enabled=self.amp_enabled):
+                self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
+                # -- critic
+                value_batch = self.policy.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                # -- entropy
+                # we only keep the entropy of the first augmentation (the original one)
+                mu_batch = self.policy.action_mean[:original_batch_size]
+                sigma_batch = self.policy.action_std[:original_batch_size]
+                entropy_batch = self.policy.entropy[:original_batch_size]
 
-            # KL
-            if self.desired_kl is not None and self.schedule == "adaptive":
-                with torch.inference_mode():
-                    kl = torch.sum(
-                        torch.log(sigma_batch / old_sigma_batch + 1.0e-5)
-                        + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch))
-                        / (2.0 * torch.square(sigma_batch))
-                        - 0.5,
-                        axis=-1,
-                    )
-                    kl_mean = torch.mean(kl)
+                # KL
+                if self.desired_kl is not None and self.schedule == "adaptive":
+                    with torch.inference_mode():
+                        kl = torch.sum(
+                            torch.log(sigma_batch / old_sigma_batch + 1.0e-5)
+                            + (torch.square(old_sigma_batch) + torch.square(old_mu_batch - mu_batch))
+                            / (2.0 * torch.square(sigma_batch))
+                            - 0.5,
+                            axis=-1,
+                        )
+                        kl_mean = torch.mean(kl)
 
                     # Reduce the KL divergence across all GPUs
                     if self.is_multi_gpu:
@@ -318,86 +327,88 @@ class PPO:
                     for param_group in self.optimizer.param_groups:
                         param_group["lr"] = self.learning_rate
 
-            # Surrogate loss
-            ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
-            surrogate = -torch.squeeze(advantages_batch) * ratio
-            surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
-                ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
-            )
-            surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+                # Surrogate loss
+                ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
+                surrogate = -torch.squeeze(advantages_batch) * ratio
+                surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
+                    ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
+                )
+                surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
 
             # Value function loss
-            if self.use_clipped_value_loss:
-                value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(
-                    -self.clip_param, self.clip_param
-                )
-                value_losses = (value_batch - returns_batch).pow(2)
-                value_losses_clipped = (value_clipped - returns_batch).pow(2)
-                value_loss = torch.max(value_losses, value_losses_clipped).mean()
-            else:
-                value_loss = (returns_batch - value_batch).pow(2).mean()
-
-            loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
-
-            # Optional train-time privileged supervision (e.g., PD-RiskNet proximal branch).
-            if mean_auxiliary_loss is not None:
-                auxiliary_loss = self.policy.get_auxiliary_loss(critic_obs_batch)
-                loss = loss + auxiliary_loss
-            else:
-                auxiliary_loss = None
-
-            # Symmetry loss
-            if self.symmetry:
-                # obtain the symmetric actions
-                # if we did augmentation before then we don't need to augment again
-                if not self.symmetry["use_data_augmentation"]:
-                    data_augmentation_func = self.symmetry["data_augmentation_func"]
-                    obs_batch, _ = data_augmentation_func(
-                        obs=obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
+                if self.use_clipped_value_loss:
+                    value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(
+                        -self.clip_param, self.clip_param
                     )
-                    # compute number of augmentations per sample
-                    num_aug = int(obs_batch.shape[0] / original_batch_size)
-
-                # actions predicted by the actor for symmetrically-augmented observations
-                mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
-
-                # compute the symmetrically augmented actions
-                # note: we are assuming the first augmentation is the original one.
-                #   We do not use the action_batch from earlier since that action was sampled from the distribution.
-                #   However, the symmetry loss is computed using the mean of the distribution.
-                action_mean_orig = mean_actions_batch[:original_batch_size]
-                _, actions_mean_symm_batch = data_augmentation_func(
-                    obs=None, actions=action_mean_orig, env=self.symmetry["_env"], obs_type="policy"
-                )
-
-                # compute the loss (we skip the first augmentation as it is the original one)
-                mse_loss = torch.nn.MSELoss()
-                symmetry_loss = mse_loss(
-                    mean_actions_batch[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
-                )
-                # add the loss to the total loss
-                if self.symmetry["use_mirror_loss"]:
-                    loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
+                    value_losses = (value_batch - returns_batch).pow(2)
+                    value_losses_clipped = (value_clipped - returns_batch).pow(2)
+                    value_loss = torch.max(value_losses, value_losses_clipped).mean()
                 else:
-                    symmetry_loss = symmetry_loss.detach()
+                    value_loss = (returns_batch - value_batch).pow(2).mean()
 
-            # Random Network Distillation loss
-            if self.rnd:
-                # predict the embedding and the target
-                predicted_embedding = self.rnd.predictor(rnd_state_batch)
-                target_embedding = self.rnd.target(rnd_state_batch).detach()
-                # compute the loss as the mean squared error
-                mseloss = torch.nn.MSELoss()
-                rnd_loss = mseloss(predicted_embedding, target_embedding)
+                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+
+                # Random Network Distillation loss
+                if self.rnd:
+                    # predict the embedding and the target
+                    predicted_embedding = self.rnd.predictor(rnd_state_batch)
+                    target_embedding = self.rnd.target(rnd_state_batch).detach()
+                    # compute the loss as the mean squared error
+                    mseloss = torch.nn.MSELoss()
+                    rnd_loss = mseloss(predicted_embedding, target_embedding)
+                else:
+                    rnd_loss = None
+
+                # Optional train-time privileged supervision (e.g., PD-RiskNet proximal branch).
+                if mean_auxiliary_loss is not None:
+                    auxiliary_loss = self.policy.get_auxiliary_loss(critic_obs_batch)
+                    loss = loss + auxiliary_loss
+                else:
+                    auxiliary_loss = None
+
+                # Symmetry loss
+                if self.symmetry:
+                    # obtain the symmetric actions
+                    # if we did augmentation before then we don't need to augment again
+                    if not self.symmetry["use_data_augmentation"]:
+                        data_augmentation_func = self.symmetry["data_augmentation_func"]
+                        obs_batch, _ = data_augmentation_func(
+                            obs=obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
+                        )
+                        # compute number of augmentations per sample
+                        num_aug = int(obs_batch.shape[0] / original_batch_size)
+
+                    # actions predicted by the actor for symmetrically-augmented observations
+                    mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
+
+                    # compute the symmetrically augmented actions
+                    # note: we are assuming the first augmentation is the original one.
+                    #   We do not use the action_batch from earlier since that action was sampled from the distribution.
+                    #   However, the symmetry loss is computed using the mean of the distribution.
+                    action_mean_orig = mean_actions_batch[:original_batch_size]
+                    _, actions_mean_symm_batch = data_augmentation_func(
+                        obs=None, actions=action_mean_orig, env=self.symmetry["_env"], obs_type="policy"
+                    )
+
+                    # compute the loss (we skip the first augmentation as it is the original one)
+                    mse_loss = torch.nn.MSELoss()
+                    symmetry_loss = mse_loss(
+                        mean_actions_batch[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
+                    )
+                    # add the loss to the total loss
+                    if self.symmetry["use_mirror_loss"]:
+                        loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
+                    else:
+                        symmetry_loss = symmetry_loss.detach()
 
             # Compute the gradients
             # -- For PPO
             self.optimizer.zero_grad()
-            loss.backward()
+            self.scaler.scale(loss).backward()
             # -- For RND
-            if self.rnd:
+            if self.rnd and rnd_loss is not None:
                 self.rnd_optimizer.zero_grad()  # type: ignore
-                rnd_loss.backward()
+                self.scaler.scale(rnd_loss).backward()
 
             # Collect gradients from all GPUs
             if self.is_multi_gpu:
@@ -405,11 +416,23 @@ class PPO:
 
             # Apply the gradients
             # -- For PPO
+            self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-            self.optimizer.step()
+
+            # self.optimizer.step()
             # -- For RND
             if self.rnd_optimizer:
-                self.rnd_optimizer.step()
+                # self.rnd_optimizer.step()
+                self.scaler.unscale_(self.rnd_optimizer)
+                nn.utils.clip_grad_norm_(self.rnd.parameters(), self.max_grad_norm)
+
+            # 优化器更新
+            self.scaler.step(self.optimizer)
+            if self.rnd_optimizer:
+                self.scaler.step(self.rnd_optimizer)
+
+            # 更新缩放因子
+            self.scaler.update()
 
             # Store the losses
             mean_value_loss += value_loss.item()
