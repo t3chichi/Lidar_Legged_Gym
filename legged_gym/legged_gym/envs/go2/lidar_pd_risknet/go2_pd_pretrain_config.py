@@ -58,13 +58,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
         curriculum = False
 
+    class asset(Go2RoughCfg.asset):
+        self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
+
     class commands(Go2RoughCfg.commands):
         heading_command = False
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [-0.5, 1.0]  # min max [m/s]
-            lin_vel_y = [-0.2, 0.2]  # min max [m/s]
-            ang_vel_yaw = [-0.5, 0.5]    # min max [rad/s]
+            ang_vel_yaw = [-1.5, 1.5]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.

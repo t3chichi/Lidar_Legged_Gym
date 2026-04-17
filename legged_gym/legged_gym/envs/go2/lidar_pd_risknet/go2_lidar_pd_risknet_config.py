@@ -118,9 +118,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.4, 1.0]
+        friction_range = [0.5, 1.5]
         randomize_base_mass = True
-        added_mass_range = [-1.0, 5.0]
+        added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
         lidar_point_mask_ratio = 0.10
