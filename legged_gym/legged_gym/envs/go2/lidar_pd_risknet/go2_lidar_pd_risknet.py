@@ -329,15 +329,29 @@ class Go2LidarPDRiskNet(Go2):
 
         # Draw command direction (green) and avoidance direction (yellow).
         start = self.base_pos[env_id].detach().cpu().numpy()
-        cmd_xy = self.commands[env_id, :2].detach().cpu().numpy()
-        avoid_xy = self.v_avoid[env_id].detach().cpu().numpy()
+        base_quat = self.base_quat[env_id]                     # 保留在 GPU 上用于旋转
 
-        cmd_vec = np.array([cmd_xy[0], cmd_xy[1], 0.0], dtype=np.float32)
-        avoid_vec = np.array([avoid_xy[0], avoid_xy[1], 0.0], dtype=np.float32)
+        # 获取机体坐标系下的命令与避障速度（保持为 torch 张量）
+        cmd_xy = self.commands[env_id, :2].detach()
+        avoid_xy = self.v_avoid[env_id].detach()
+
+        # 构造三维机体向量，并用四元数旋转到世界坐标系
+        cmd_body = torch.tensor([cmd_xy[0].item(), cmd_xy[1].item(), 0.0], device=self.device)
+        avoid_body = torch.tensor([avoid_xy[0].item(), avoid_xy[1].item(), 0.0], device=self.device)
+
+        cmd_world = quat_apply(base_quat, cmd_body).cpu().numpy()
+        avoid_world = quat_apply(base_quat, avoid_body).cpu().numpy()
+
+        cmd_vec = cmd_world.astype(np.float32)
+        avoid_vec = avoid_world.astype(np.float32)
 
         cmd_norm = np.linalg.norm(cmd_vec[:2])
         avoid_norm = np.linalg.norm(avoid_vec[:2])
         if cmd_norm > 1.0e-6:
-            self.vis.draw_arrow(env_id, start.tolist(), (start + 0.6 * cmd_vec / cmd_norm).tolist(), width=0.01, color=(0, 1, 0))
+            self.vis.draw_arrow(env_id, start.tolist(),
+                                (start + 0.6 * cmd_vec / cmd_norm).tolist(),
+                                width=0.01, color=(0, 1, 0))
         if avoid_norm > 1.0e-6:
-            self.vis.draw_arrow(env_id, start.tolist(), (start + 0.6 * avoid_vec / avoid_norm).tolist(), width=0.01, color=(1, 1, 0))
+            self.vis.draw_arrow(env_id, start.tolist(),
+                                (start + 0.6 * avoid_vec / avoid_norm).tolist(),
+                                width=0.01, color=(1, 1, 0))
