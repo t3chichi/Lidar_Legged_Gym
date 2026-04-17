@@ -18,6 +18,10 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
+    class init_state(Go2RoughCfg.init_state):
+        randomize_rot = True
+        rot_randomization_range = [-3.1415, 3.1415]   # 绕 z 轴旋转范围（弧度），即 ±π
+
     class pd_risknet:
         enabled = True
         history_length = OBS_HISTORY_LENGTH
@@ -57,9 +61,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
         # Use obstacle-dense terrains for avoidance training without adding extra actors.
         curriculum = False
-        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 1.0]
+        terrain_proportions = [0.0, 0.25, 0.15, 0.15, 0.45]
         # Random obstacle height per sub-terrain (meters): enables both shorter and taller obstacles.
-        discrete_obstacle_height_range = [0.02, 0.45]
+        discrete_obstacle_height_range = [0.025, 0.45]
 
     class commands(Go2RoughCfg.commands):
         heading_command = False
@@ -104,7 +108,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
 
-            termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
+            # termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
             
             #overrides
             # lin_vel_z = -6.0e-4
