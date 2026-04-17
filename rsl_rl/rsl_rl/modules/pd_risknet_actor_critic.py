@@ -314,6 +314,12 @@ class PDRiskNetActorCritic(nn.Module):
             grouped = False
             window_len = 1
             batch_size = frame_feat.shape[1]
+        # 推理分支单步序列特判：形状为 (1, B, F) 且 masks=None
+        elif masks is None and frame_feat.dim() == 3 and frame_feat.shape[0] == 1:
+            seq_in = frame_feat                 # (1, B, F)
+            grouped = False
+            window_len = 1
+            batch_size = frame_feat.shape[1]
         else:
             seq_in, grouped, window_len, batch_size, _ = self._frame_window_to_seq(frame_feat)
 
@@ -559,9 +565,12 @@ class PDRiskNetActorCritic(nn.Module):
                 end - start, t_prox, pn, -1
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_prox, pn, -1)
-            # with torch.backends.cudnn.flags(enabled=False):
-            #     _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
-            _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
+            # 训练时使用 checkpoint 节省显存，推理时直接前向（且无需梯度）
+            if self.training:
+                _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
+            else:
+                with torch.no_grad():
+                    _, chunk_h = self.proximal_gru(chunk_seq)
             prox_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_prox, -1)
         return prox_frame_feat
 
@@ -580,9 +589,11 @@ class PDRiskNetActorCritic(nn.Module):
                 end - start, t_dist, dn, -1
             )
             chunk_seq = chunk_enc.reshape((end - start) * t_dist, dn, -1)
-            # with torch.backends.cudnn.flags(enabled=False):
-            #     _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
-            _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
+            if self.training:
+                _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
+            else:
+                with torch.no_grad():
+                    _, chunk_h = self.distal_spatial_gru(chunk_seq)
             dist_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_dist, -1)
         return dist_frame_feat
 
@@ -600,29 +611,23 @@ class PDRiskNetActorCritic(nn.Module):
         proprio, lidar_frame = self._split_obs(observations)
 
         if observations.dim() == 2:
-            # 推理/采样：构建在线滑动窗口（保持不变）
-            prox_points, dist_points = self._build_online_points_windows(lidar_frame)
-            seq_len = None
-            batch_size = lidar_frame.shape[0]
-        elif observations.dim() == 3:
-            # 训练更新：lidar_frame 形状为 (T, B, N, 3)
-            # 新函数返回 [T, B, F] 的特征序列
-            prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(lidar_frame, masks)
-            # 直接返回，无需后续的空间编码（已在 _build_replay_frame_features 中完成）
+            # 推理/采样：仅处理当前帧，不维护点云缓存
+            # 对当前帧进行采样、排序，得到近端和远端点云 [B, prox_points, 3] 和 [B, dist_points, 3]
+            prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(lidar_frame)
+
+            # 扩展时间维度（T=1），以便复用空间编码函数
+            prox_points_t = prox_points_t.unsqueeze(1)  # [B, 1, prox_points, 3]
+            dist_points_t = dist_points_t.unsqueeze(1)  # [B, 1, dist_points, 3]
+
+            # 编码得到空间特征 [B, 1, feature_dim]，然后去掉时间维
+            prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
+            dist_feat_t = self._encode_distal_points_chunked(dist_points_t).squeeze(1)    # [B, distal_feature_dim]
+
+            # 扩展时间维度，形成 [1, B, F] 的特征序列，供时间 GRU 使用
+            prox_frame_feat = prox_feat_t.unsqueeze(0)   # [1, B, F]
+            dist_frame_feat = dist_feat_t.unsqueeze(0)   # [1, B, F]
+
             return proprio, prox_frame_feat, dist_frame_feat
-        else:
-            raise ValueError(f"Unsupported observations rank: {observations.dim()}")
-
-        # 以下为推理分支（observations.dim() == 2）的处理
-        _, t_prox, _, _ = prox_points.shape
-        _, t_dist, _, _ = dist_points.shape
-
-        # 对缓存窗口进行空间编码（推理时仍需缓存，因为在线环境只提供单帧，需要历史窗口）
-        prox_frame_feat = self._encode_proximal_points_chunked(prox_points)
-        dist_frame_feat = self._encode_distal_points_chunked(dist_points)
-
-        # 推理时返回的特征形状为 [B, t_prox, F] 或 [B, t_dist, F]
-        return proprio, prox_frame_feat, dist_frame_feat
 
     def _build_actor_latent(
         self,
