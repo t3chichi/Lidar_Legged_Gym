@@ -612,22 +612,23 @@ class PDRiskNetActorCritic(nn.Module):
 
         if observations.dim() == 2:
             # 推理/采样：仅处理当前帧，不维护点云缓存
-            # 对当前帧进行采样、排序，得到近端和远端点云 [B, prox_points, 3] 和 [B, dist_points, 3]
             prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(lidar_frame)
-
-            # 扩展时间维度（T=1），以便复用空间编码函数
             prox_points_t = prox_points_t.unsqueeze(1)  # [B, 1, prox_points, 3]
             dist_points_t = dist_points_t.unsqueeze(1)  # [B, 1, dist_points, 3]
-
-            # 编码得到空间特征 [B, 1, feature_dim]，然后去掉时间维
             prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
             dist_feat_t = self._encode_distal_points_chunked(dist_points_t).squeeze(1)    # [B, distal_feature_dim]
-
-            # 扩展时间维度，形成 [1, B, F] 的特征序列，供时间 GRU 使用
             prox_frame_feat = prox_feat_t.unsqueeze(0)   # [1, B, F]
             dist_frame_feat = dist_feat_t.unsqueeze(0)   # [1, B, F]
-
             return proprio, prox_frame_feat, dist_frame_feat
+
+        elif observations.dim() == 3:
+            # 训练更新：lidar_frame 形状为 (T, B, N, 3)
+            # 返回 [T, B, F] 的特征序列
+            prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(lidar_frame, masks)
+            return proprio, prox_frame_feat, dist_frame_feat
+
+        else:
+            raise ValueError(f"Unsupported observations rank: {observations.dim()}")
 
     def _build_actor_latent(
         self,
