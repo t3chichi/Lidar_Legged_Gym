@@ -44,7 +44,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Critic input uses proprio (48) + privileged heights (187).
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         # Anti-flip termination gates to avoid upside-down reward exploitation.
-        enable_fall_termination = True
+        enable_fall_termination = False
         # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
         fall_projected_gravity_z_threshold = -0.1
         # Terminate when base height is unrealistically low (meters).
