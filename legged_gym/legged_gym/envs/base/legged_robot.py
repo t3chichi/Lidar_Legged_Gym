@@ -466,28 +466,37 @@ class LeggedRobot(BaseTask, LeggedRobotRewMixin):
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _reset_root_states(self, env_ids):
-        """ Resets ROOT states position and velocities of selected environmments
-            Sets base position based on the curriculum
-            Selects randomized base velocities within -0.5:0.5 [m/s, rad/s]
-        Args:
-            env_ids (List[int]): Environemnt ids
-        """
-        # base position
         if self.custom_origins:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
-            # xy position within 1m of the center
             self.root_states[env_ids, :2] += torch_rand_float(-0.5, 0.5, (len(env_ids), 2), device=self.device)
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
-        # base velocities
-        # [7:10]: lin vel, [10:13]: ang vel
+
+        # 随机初始朝向（绕z轴）
+        if self.cfg.init_state.randomize_rot:
+            rand_yaw = torch_rand_float(
+                self.cfg.init_state.rot_randomization_range[0],
+                self.cfg.init_state.rot_randomization_range[1],
+                (len(env_ids), 1),
+                device=self.device
+            ).squeeze(1)
+            # 关键修正：axis 必须为浮点类型
+            axis = torch.tensor([0, 0, 1], dtype=torch.float, device=self.device)
+            quat = quat_from_angle_axis(rand_yaw, axis)
+            self.root_states[env_ids, 3:7] = quat
+        else:
+            self.root_states[env_ids, 3:7] = torch.tensor(self.cfg.init_state.rot, device=self.device)
+
+        # 随机初始速度
         self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device)
+
         env_ids_int32 = env_ids.to(dtype=torch.int32)
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_states),
-                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim, gymtorch.unwrap_tensor(self.root_states),
+            gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32)
+        )
 
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity.

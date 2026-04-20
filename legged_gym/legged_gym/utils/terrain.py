@@ -152,6 +152,10 @@ class Terrain:
                                                   stone_distance=stone_distance, max_height=0., platform_size=4.)
         elif choice < self.proportions[6]:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
+
+        elif choice < self.proportions[7]:
+            pillar_field_terrain(terrain, difficulty, self.cfg)
+        
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.)
 
@@ -200,3 +204,104 @@ def pit_terrain(terrain, depth, platform_size=1.):
     y1 = terrain.width // 2 - platform_size
     y2 = terrain.width // 2 + platform_size
     terrain.height_field_raw[x1:x2, y1:y2] = -depth
+
+def pillar_field_terrain(terrain, difficulty, cfg):
+    """
+    生成随机分布的四棱柱障碍物地形（矩形截面）。
+    数量随 difficulty 线性增加，尺寸和间距可配置。
+    """
+    # 数量范围（随难度插值）
+    count_min = getattr(cfg, "pillar_count_min", 5)
+    count_max = getattr(cfg, "pillar_count_max", 25)
+    # 矩形边长范围（米）
+    size_x_min = getattr(cfg, "pillar_size_x_min", 0.15)
+    size_x_max = getattr(cfg, "pillar_size_x_max", 0.30)
+    size_y_min = getattr(cfg, "pillar_size_y_min", 0.15)
+    size_y_max = getattr(cfg, "pillar_size_y_max", 0.30)
+    # 高度范围（米）
+    height_min = getattr(cfg, "pillar_height_min", 0.20)
+    height_max = getattr(cfg, "pillar_height_max", 0.50)
+    # 间距与放置
+    min_separation = getattr(cfg, "pillar_min_separation", 1.2)          # 柱心最小间距（米）
+    center_clear_radius = getattr(cfg, "pillar_center_clear_radius", 1.2)  # 出生点净空半径（米）
+    spawn_radius = getattr(cfg, "pillar_spawn_radius", 4.0)              # 障碍物最大生成半径（米）
+    allow_height_variation = getattr(cfg, "pillar_allow_height_variation", True)
+
+    # 根据难度插值计算当前数量
+    count = int(count_min + difficulty * (count_max - count_min))
+    # 尺寸也可随难度略微增大（可选）
+    size_x = size_x_min + difficulty * (size_x_max - size_x_min)
+    size_y = size_y_min + difficulty * (size_y_max - size_y_min)
+    height = height_min + difficulty * (height_max - height_min)
+
+    # 转换为像素单位
+    size_x_px = int(size_x / terrain.horizontal_scale)
+    size_y_px = int(size_y / terrain.horizontal_scale)
+    height_px = int(height / terrain.vertical_scale)
+    min_sep_px = int(min_separation / terrain.horizontal_scale)
+    clear_radius_px = int(center_clear_radius / terrain.horizontal_scale)
+    spawn_radius_px = int(spawn_radius / terrain.horizontal_scale)
+
+    # 地形中心
+    center_x = terrain.width // 2
+    center_y = terrain.length // 2
+
+    # 生成满足约束的随机位置
+    max_attempts = count * 100
+    positions = []
+    for _ in range(max_attempts):
+        if len(positions) >= count:
+            break
+        # 在圆形区域内随机采样
+        r = np.random.uniform(clear_radius_px, spawn_radius_px)
+        theta = np.random.uniform(0, 2 * np.pi)
+        cx = int(center_x + r * np.cos(theta))
+        cy = int(center_y + r * np.sin(theta))
+
+        # 边界检查
+        if (cx - size_x_px//2 < 0 or cx + size_x_px//2 >= terrain.width or
+            cy - size_y_px//2 < 0 or cy + size_y_px//2 >= terrain.length):
+            continue
+
+        # 检查与中心点距离
+        if np.hypot(cx - center_x, cy - center_y) < clear_radius_px:
+            continue
+
+        # 检查与已有位置的间距
+        valid = True
+        for px, py in positions:
+            if np.hypot(cx - px, cy - py) < min_sep_px:
+                valid = False
+                break
+        if valid:
+            positions.append((cx, cy))
+
+    # 在高度图上绘制矩形棱柱
+    for cx, cy in positions:
+        if allow_height_variation:
+            h_px = np.random.randint(int(height_px * 0.6), height_px + 1)
+        else:
+            h_px = height_px
+
+        # 矩形区域
+        x1 = cx - size_x_px // 2
+        x2 = cx + size_x_px // 2
+        y1 = cy - size_y_px // 2
+        y2 = cy + size_y_px // 2
+        # 确保不越界
+        x1 = max(0, x1)
+        x2 = min(terrain.width, x2)
+        y1 = max(0, y1)
+        y2 = min(terrain.length, y2)
+        terrain.height_field_raw[x1:x2, y1:y2] = h_px
+
+    return terrain
+
+
+def _draw_circle(cx, cy, radius, width, length):
+    """在指定尺寸的画布上生成圆形区域的像素索引。"""
+    y, x = np.ogrid[:width, :length]
+    dist = np.sqrt((x - cx)**2 + (y - cy)**2)
+    mask = dist <= radius
+    rr, cc = np.nonzero(mask)
+    return rr, cc

@@ -55,15 +55,35 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         fall_base_height_threshold = 0.12
 
     class terrain(Go2RoughCfg.terrain):
+        horizontal_scale = 0.1
         # Keep heights enabled for privileged supervision channel.
         measure_heights = True
         measured_points_x = [-2.8, -2.45, -2.1, -1.75, -1.4, -1.05, -0.7, -0.35, 0.0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.45, 2.8,]
         measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
         # Use obstacle-dense terrains for avoidance training without adding extra actors.
-        curriculum = False
-        terrain_proportions = [0.0, 0.25, 0.15, 0.15, 0.45]
+        mesh_type = 'trimesh'
+        curriculum = True
+
+        terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
         # Random obstacle height per sub-terrain (meters): enables both shorter and taller obstacles.
-        discrete_obstacle_height_range = [0.025, 0.45]
+        terrain_length = 8.
+        terrain_width = 8.
+        num_rows = 6   
+        num_cols = 4
+
+        # 四棱柱障碍物配置
+        pillar_count_min = 12          # 简单难度最少数量
+        pillar_count_max = 20         # 困难难度最多数量
+        pillar_size_x_min = 0.4      # 矩形 X 方向最小边长 (m)
+        pillar_size_x_max = 0.5     # 矩形 X 方向最大边长 (m)
+        pillar_size_y_min = 0.4      # 矩形 Y 方向最小边长 (m)
+        pillar_size_y_max = 0.5      # 矩形 Y 方向最大边长 (m)
+        pillar_height_min = 0.35      # 最小高度 (m)
+        pillar_height_max = 0.80      # 最大高度 (m)
+        pillar_min_separation = 1.5   # 柱心最小间距 (m)
+        pillar_center_clear_radius = 1.3  # 出生点净空半径 (m)
+        pillar_spawn_radius = 4.     # 障碍物最大生成半径 (m)
+        pillar_allow_height_variation = True
 
     class commands(Go2RoughCfg.commands):
         heading_command = False
