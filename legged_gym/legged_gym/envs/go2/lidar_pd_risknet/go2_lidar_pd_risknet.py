@@ -48,15 +48,6 @@ class Go2LidarPDRiskNet(Go2):
 
     def _init_pd_risknet_buffers(self):
         cfg = self.cfg.pd_risknet
-        # self.lidar_history = torch.zeros(
-        #     self.num_envs,
-        #     int(cfg.history_length),
-        #     int(cfg.num_lidar_points),
-        #     3,
-        #     device=self.device,
-        #     dtype=torch.float,
-        #     requires_grad=False,
-        # )
         self.lidar_points_base = torch.zeros(
             self.num_envs,
             int(cfg.num_lidar_points),
@@ -72,7 +63,13 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
-        self.v_avoid = torch.zeros(self.num_envs, 2, device=self.device, dtype=torch.float, requires_grad=False)
+        self.v_avoid = torch.zeros(
+            self.num_envs, 
+            2, 
+            device=self.device, 
+            dtype=torch.float, 
+            requires_grad=False
+        )
 
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
@@ -407,3 +404,14 @@ class Go2LidarPDRiskNet(Go2):
             self.vis.draw_arrow(env_id, start.tolist(),
                                 (start + 0.6 * avoid_vec / avoid_norm).tolist(),
                                 width=0.01, color=(1, 1, 0))
+            
+        # 绘制合成速度 (蓝色)
+        combined_xy = (self.commands[env_id, :2] + self.v_avoid[env_id]).detach()
+        combined_body = torch.tensor([combined_xy[0].item(), combined_xy[1].item(), 0.0], device=self.device)
+        combined_world = quat_apply(base_quat, combined_body).cpu().numpy()
+        combined_vec = combined_world.astype(np.float32)
+        combined_norm = np.linalg.norm(combined_vec[:2])
+        if combined_norm > 1.0e-6:
+            self.vis.draw_arrow(env_id, start.tolist(),
+                                (start + 0.6 * combined_vec / combined_norm).tolist(),
+                                width=0.01, color=(0, 0, 1))  # 蓝色
