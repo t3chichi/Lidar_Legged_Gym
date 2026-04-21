@@ -32,8 +32,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         split_theta_deg = 5.0
 
         n_sectors = 24
-        avoid_distance_thresh = 1.0
-        avoid_alpha = 1.0
+        avoid_distance_thresh = 1.5
+        avoid_alpha = 2.0
         avoid_beta = 1.0
         ray_max_distance = 10.0
 
@@ -87,11 +87,12 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class commands(Go2RoughCfg.commands):
         heading_command = False
-        resampling_time = 4.
+        resampling_time = 2.
+        curriculum = True
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.4, 0.8]  # min max [m/s]
+            lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.2, 0.2]  # min max [m/s]
-            ang_vel_yaw = [-0.3, 0.3]    # min max [rad/s]
+            ang_vel_yaw = [-0.2, 0.2]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -112,6 +113,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
+        base_height_target = 0.33
         class scales:
             # Paper main rewards.
             vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
@@ -127,13 +129,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
-
-            # termination = -0.5  # 显式终止惩罚：翻倒/触地后重置时给予负奖励
             
-            #overrides
-            # lin_vel_z = -6.0e-4
-            # action_rate = -6.0e-3
-            # action_rate2 = -6.0e-3
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+            feet_air_time = 1.0
+            base_height = -0.2
+
+            
             
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
