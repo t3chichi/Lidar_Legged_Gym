@@ -184,14 +184,6 @@ class PDRiskNetActorCritic(nn.Module):
                 self._prox_points_cache[dones == 1] = 0.0
             if self._dist_points_cache.numel() > 0:
                 self._dist_points_cache[dones == 1] = 0.0
-
-    # def get_hidden_states(self):
-    #     actor_hidden_states = (self.proximal_memory_a.hidden_states, self.distal_memory_a.hidden_states)
-    #     # if actor_hidden_states == (None, None) and self._critic_hidden_state is None:
-    #     #     return (None, None)
-    #     # critic_hidden_states = (self._critic_hidden_state, self._critic_hidden_state)
-    #     # return actor_hidden_states, critic_hidden_states
-    #     return actor_hidden_states, None
     
     def get_hidden_states(self):
     # 获取当前近端/远端记忆的隐藏状态（可能为 None）
@@ -236,15 +228,6 @@ class PDRiskNetActorCritic(nn.Module):
             if len(hidden_states) == 1:
                 return hidden_states[0], None
         return hidden_states, None
-
-    # def _ensure_critic_hidden_state(self, batch_size: int, device: torch.device, dtype: torch.dtype):
-    #     if self._critic_hidden_state is None or self._critic_hidden_state.shape[1] != batch_size:
-    #         # Keep critic hidden-state shape aligned with recurrent latent size for storage/replay compatibility.
-    #         self._critic_hidden_state = torch.zeros(
-    #             (1, batch_size, self.distal_feature_dim),
-    #             device=device,
-    #             dtype=dtype,
-    #         )
 
     def _warn_missing_hidden_once(self, branch: str):
         if branch == "prox" and (not self._warned_missing_prox_hidden):
@@ -337,6 +320,17 @@ class PDRiskNetActorCritic(nn.Module):
 
     def _split_obs(self, observations: torch.Tensor):
         # 观测布局：[proprio (48)] + [single frame point cloud (N*3)]
+         # 处理空张量情况（例如 PPO 初始化阶段）
+        if observations.numel() == 0:
+            if observations.dim() == 2:
+                return (torch.empty(0, self.proprio_obs_dim, device=observations.device),
+                        torch.empty(0, self.num_lidar_points, 3, device=observations.device))
+            elif observations.dim() == 3:
+                t, b, _ = observations.shape
+                return (torch.empty(t, b, self.proprio_obs_dim, device=observations.device),
+                        torch.empty(t, b, self.num_lidar_points, 3, device=observations.device))
+            else:
+                raise ValueError(f"Unexpected observations dim: {observations.dim()}")
         if observations.dim() == 2:
             proprio = observations[:, :self.proprio_obs_dim]
             lidar_flat = observations[:, self.proprio_obs_dim:]
@@ -737,8 +731,10 @@ class PDRiskNetActorCritic(nn.Module):
     def get_auxiliary_loss(self, privileged_heights: torch.Tensor) -> torch.Tensor:
         if self._cached_proximal_feature is None:
             return torch.zeros((), device=privileged_heights.device)
-
-        # 取序列最后一个时间步的特征（或平均池化）
+        
+        if self._cached_proximal_feature.numel() == 0:
+            return torch.zeros((), device=privileged_heights.device)
+        # 取序列最后一个时间步的特征进行监督（如果是训练分支的话），或者直接使用当前特征（如果是推理分支的话）
         if self._cached_proximal_feature.dim() == 3:
             # shape: [batch, seq_len, feat_dim] -> 取最后一步
             prox_feat = self._cached_proximal_feature[:, -1, :]
