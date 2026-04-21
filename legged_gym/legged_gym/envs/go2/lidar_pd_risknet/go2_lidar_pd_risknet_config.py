@@ -58,7 +58,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         horizontal_scale = 0.1
         # Keep heights enabled for privileged supervision channel.
         measure_heights = True
-        measured_points_x = [-2.8, -2.45, -2.1, -1.75, -1.4, -1.05, -0.7, -0.35, 0.0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.45, 2.8,]
+        measured_points_x = [-1.0, -0.65, -0.3, 0.05, 0.4, 0.75, 1.1, 1.45, 1.8, 2.15, 2.5, 2.85, 3.2, 3.55, 3.9, 4.25, 4.6]
         measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
         # Use obstacle-dense terrains for avoidance training without adding extra actors.
         mesh_type = 'trimesh'
@@ -147,9 +147,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
-        lidar_point_mask_ratio = 0.10
-        lidar_point_mask_value_range = [0.0, 0.3]
-        lidar_distance_noise_ratio = 0.10
+        lidar_point_mask_ratio = 0.05
+        lidar_point_mask_value_range = [2.0, 10.0]
+        lidar_distance_noise_ratio = 0.02
 
         # Remaining parameters are declared for parity and can be consumed by future hooks.
         payload_mass_range = [-1.0, 3.0]
