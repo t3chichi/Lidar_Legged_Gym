@@ -42,6 +42,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
+        avoid_speed_scale = 0.6
+
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
         num_observations = PD_PROPRIO_DIM + OBS_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
@@ -72,15 +74,15 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_cols = 4
 
         # 四棱柱障碍物配置
-        pillar_count_min = 12          # 简单难度最少数量
-        pillar_count_max = 20         # 困难难度最多数量
+        pillar_count_min = 8          # 简单难度最少数量
+        pillar_count_max = 14         # 困难难度最多数量
         pillar_size_x_min = 0.4      # 矩形 X 方向最小边长 (m)
         pillar_size_x_max = 0.5     # 矩形 X 方向最大边长 (m)
         pillar_size_y_min = 0.4      # 矩形 Y 方向最小边长 (m)
         pillar_size_y_max = 0.5      # 矩形 Y 方向最大边长 (m)
         pillar_height_min = 0.35      # 最小高度 (m)
         pillar_height_max = 0.80      # 最大高度 (m)
-        pillar_min_separation = 1.5   # 柱心最小间距 (m)
+        pillar_min_separation = 1.6   # 柱心最小间距 (m)
         pillar_center_clear_radius = 1.3  # 出生点净空半径 (m)
         pillar_spawn_radius = 4.     # 障碍物最大生成半径 (m)
         pillar_allow_height_variation = True
@@ -130,10 +132,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
             
-            tracking_lin_vel = 1.0
+            tracking_lin_vel = 1.1
             tracking_ang_vel = 0.5
-            feet_air_time = 1.0
-            base_height = -0.2
+            feet_air_time = 1.1
+            base_height = -0.25
+
+            # Overrides
+            lin_vel_z = -3.2e-4
 
             
             

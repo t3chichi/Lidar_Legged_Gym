@@ -267,7 +267,7 @@ class Go2LidarPDRiskNet(Go2):
 
         active = min_dist_per_sec < float(cfg.avoid_distance_thresh)
         mag = torch.exp(-min_dist_per_sec * float(cfg.avoid_alpha)) * active.float()
-        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1)
+        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1) * cfg.avoid_speed_scale
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()

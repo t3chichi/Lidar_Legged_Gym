@@ -45,7 +45,7 @@ class PDRiskNetActorCritic(nn.Module):
         proprio_obs_dim: int = 48,
         privileged_height_dim: int = 187,
         privileged_critic_dim: int | None = None,
-        privileged_supervision_coef: float = 1.0,
+        privileged_supervision_coef: float = 0.5,
         **kwargs,
     ):
         if kwargs:
