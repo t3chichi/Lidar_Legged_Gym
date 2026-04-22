@@ -73,6 +73,11 @@ class LeggedRobot(BaseTask, LeggedRobotRewMixin):
         self.debug_viz = False
         self.init_done = False
         self._parse_cfg(self.cfg)
+
+        if 'cuda' in sim_device:
+            sim_params.use_gpu_pipeline = True
+            print("[INFO] GPU pipeline enabled in sim_params.")
+        
         super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
         LeggedRobotRewMixin.__init__(self)
 
