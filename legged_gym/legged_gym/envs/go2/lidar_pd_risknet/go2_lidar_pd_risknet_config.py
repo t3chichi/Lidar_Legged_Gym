@@ -168,6 +168,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         gravity_offset_range = [-1.0, 1.0]
         proprio_delay_range = [0.005, 0.045]
 
+    class sim(Go2RoughCfg.sim):
+        class physx(Go2RoughCfg.sim.physx):
+            num_threads = 24  # AutoDL使用，4096环境
+        
+
 
 class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
