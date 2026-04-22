@@ -139,8 +139,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             # Overrides
             lin_vel_z = -3.3e-4
-            dof_vel = -1.1e-6
-            dof_acc = -2.6e-7
+
 
             
             
