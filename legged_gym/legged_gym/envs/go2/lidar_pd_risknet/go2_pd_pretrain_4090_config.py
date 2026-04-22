@@ -4,12 +4,12 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 OBS_HISTORY_LENGTH = 1
 PROX_HISTORY_LENGTH = 10
 DIST_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 24
-PD_SPHERICAL_ELEVATION = 18
+PD_SPHERICAL_AZIMUTH = 80
+PD_SPHERICAL_ELEVATION = 50
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
-PD_PROXIMAL_POINTS = 288
-PD_DISTAL_POINTS = 144
+PD_PROXIMAL_POINTS = 512
+PD_DISTAL_POINTS = 256
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
@@ -18,6 +18,27 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
+    class init_state(Go2RoughCfg.init_state):
+        randomize_rot = True
+        rot_randomization_range = [-3.1415, 3.1415]   # 绕 z 轴旋转范围（弧度），即 ±π
+
+    class sim(Go2RoughCfg.sim):
+        class physx(Go2RoughCfg.sim.physx):
+            num_threads = 24  # AutoDL使用，4096环境(原10线程)
+            max_gpu_contact_pairs = 2**23  # 2**24 -> needed for 8000 envs and more
+
+    class raycaster(Go2RoughCfg.raycaster):
+        enable_raycast = True
+        ray_pattern = "spherical"
+        spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
+        spherical_num_elevation = PD_SPHERICAL_ELEVATION
+        max_distance = 50.0
+        attach_yaw_only = False
+        # Match unitree_go2.py lidar mount translation (base frame, meters).
+        offset_pos = [0.28945, 0.0, -0.046825]
+        # Match unitree_go2.py lidar mount fixed rotation (roll, pitch, yaw in radians).
+        sensor_offset_rpy = [0.0, -2.8782, 3.14]
+
     class pd_risknet:
         enabled = True
         history_length = OBS_HISTORY_LENGTH
@@ -27,7 +48,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = 5.0
 
-        n_sectors = 24
+        n_sectors = 36
         avoid_distance_thresh = 1.0
         avoid_alpha = 1.0
         avoid_beta = 1.0
@@ -74,18 +95,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Current base pipeline assumes one actor per env and needs a larger refactor
         # for multi-actor root-state bookkeeping.
         enable_obstacles = False
-
-    class raycaster(Go2RoughCfg.raycaster):
-        enable_raycast = True
-        ray_pattern = "spherical"
-        spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
-        spherical_num_elevation = PD_SPHERICAL_ELEVATION
-        max_distance = 10.0
-        attach_yaw_only = False
-        # Match unitree_go2.py lidar mount translation (base frame, meters).
-        offset_pos = [0.28945, 0.0, -0.046825]
-        # Match unitree_go2.py lidar mount fixed rotation (roll, pitch, yaw in radians).
-        sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
         class scales(Go2RoughCfg.rewards.scales):
@@ -159,7 +168,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
         actor_hidden_dims = [1024, 512, 256, 128]
-        critic_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [1024, 512, 256, 128]
         perception_enabled = True
         history_length = OBS_HISTORY_LENGTH
         proximal_history_length = PROX_HISTORY_LENGTH
@@ -192,6 +201,6 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
-        experiment_name = "go2_pd_pretrain"
+        experiment_name = "go2_pd_pretrain_4090"
         run_name = ""
         max_iterations = 300
