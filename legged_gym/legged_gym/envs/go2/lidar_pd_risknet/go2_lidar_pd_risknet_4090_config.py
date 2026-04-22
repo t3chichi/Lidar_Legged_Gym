@@ -24,7 +24,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
-            num_threads = 10  # AutoDL使用，4096环境(原10线程)
+            num_threads = 24  # AutoDL使用，4096环境(原10线程)
             max_gpu_contact_pairs = 2**23  # 2**24 -> needed for 8000 envs and more
 
     class raycaster(Go2RoughCfg.raycaster):
