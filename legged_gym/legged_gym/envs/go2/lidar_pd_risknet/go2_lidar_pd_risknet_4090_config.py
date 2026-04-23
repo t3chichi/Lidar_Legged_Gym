@@ -144,9 +144,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             # Overrides
             lin_vel_z = -3.3e-4
-
-
-            
             
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
