@@ -94,7 +94,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.5, 0.9]  # min max [m/s]
             lin_vel_y = [-0.3, 0.3]  # min max [m/s]
-            ang_vel_yaw = [-0.3, 0.3]    # min max [rad/s]
+            ang_vel_yaw = [-0.2, 0.2]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -132,15 +132,20 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
             
-            tracking_lin_vel = 1.15
+            tracking_lin_vel = 1.10
             tracking_ang_vel = 0.5
             ang_vel_xy = -5.0e-5
-            feet_air_time = 0.6
-            base_height = -0.27
+            feet_air_time = 1.0
+            base_height = -0.28
 
             # Overrides
             lin_vel_z = -4.0e-4
-            collision = -2.2e-2
+            collision = -2.0e-2
+            dof_vel = -3.0e-6
+            dof_acc = -4.0e-7  # 惩罚关节加速度过大，提升动作平滑性
+            action_rate = -8.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
+            action_rate2 = -8.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
+            
 
             #消融实验
             # vel_avoid = 0
