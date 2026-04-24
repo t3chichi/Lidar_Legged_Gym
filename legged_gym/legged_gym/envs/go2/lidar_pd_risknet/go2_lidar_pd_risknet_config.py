@@ -32,9 +32,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         split_theta_deg = 5.0
 
         n_sectors = 24
-        avoid_distance_thresh = 1.5
-        avoid_alpha = 2.0
-        avoid_beta = 1.0
+        avoid_distance_thresh = 2.0
+        avoid_alpha = 1.5
+        avoid_beta = 1.1
         ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -132,25 +132,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
 
-            tracking_lin_vel = 1.05
+            tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            ang_vel_xy = -5.0e-5
             feet_air_time = 1.0
             base_height = -0.28
-            #gait_2_step = -5.0  # 隐式对角步态惩罚：强制 trot 步态（对角腿同步，同侧腿异步）
+            gait_2_step = -5.0  # 隐式对角步态惩罚：强制 trot 步态（对角腿同步，同侧腿异步）
 
             # Overrides
-            lin_vel_z = -4.1e-4
-            collision = -2.0e-2
-            dof_vel = -3.0e-6
-            dof_acc = -4.0e-7  # 惩罚关节加速度过大，提升动作平滑性
-            action_rate = -8.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
-            action_rate2 = -8.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
             
-
-            #消融实验
-            # vel_avoid = 0
-            # rays = 0
 
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
