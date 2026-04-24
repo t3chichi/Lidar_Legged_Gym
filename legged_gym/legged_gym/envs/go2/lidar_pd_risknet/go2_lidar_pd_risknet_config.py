@@ -93,7 +93,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         curriculum = True
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.5, 0.9]  # min max [m/s]
-            lin_vel_y = [-0.3, 0.3]  # min max [m/s]
+            lin_vel_y = [-0.2, 0.2]  # min max [m/s]
             ang_vel_yaw = [-0.2, 0.2]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
@@ -131,15 +131,16 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
-            
-            tracking_lin_vel = 1.10
+
+            tracking_lin_vel = 1.05
             tracking_ang_vel = 0.5
             ang_vel_xy = -5.0e-5
             feet_air_time = 1.0
             base_height = -0.28
+            #gait_2_step = -5.0  # 隐式对角步态惩罚：强制 trot 步态（对角腿同步，同侧腿异步）
 
             # Overrides
-            lin_vel_z = -4.0e-4
+            lin_vel_z = -4.1e-4
             collision = -2.0e-2
             dof_vel = -3.0e-6
             dof_acc = -4.0e-7  # 惩罚关节加速度过大，提升动作平滑性
@@ -219,4 +220,4 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         num_steps_per_env = 24
         experiment_name = "go2_lidar_pd_risknet"
         run_name = ""
-        max_iterations = 1000
+        max_iterations = 2000
