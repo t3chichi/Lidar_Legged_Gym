@@ -8,8 +8,8 @@ PD_SPHERICAL_AZIMUTH = 24
 PD_SPHERICAL_ELEVATION = 18
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
-PD_PROXIMAL_POINTS = 288
-PD_DISTAL_POINTS = 144
+PD_PROXIMAL_POINTS = 350
+PD_DISTAL_POINTS = 75
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
@@ -18,6 +18,10 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
+    class init_state(Go2RoughCfg.init_state):
+        randomize_rot = True
+        rot_randomization_range = [-3.1415, 3.1415]
+
     class pd_risknet:
         enabled = True
         history_length = OBS_HISTORY_LENGTH
@@ -25,12 +29,12 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 5.0
+        split_theta_deg = 22.0
 
         n_sectors = 24
-        avoid_distance_thresh = 1.0
-        avoid_alpha = 1.0
-        avoid_beta = 1.0
+        avoid_distance_thresh = 1.6
+        avoid_alpha = 1.8
+        avoid_beta = 1.2
         ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -109,7 +113,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
             lin_vel_z = -2.0
-            ang_vel_xy = -0.05
+            ang_vel_xy = -0.05 
             orientation = -0.
             torques = -0.00001
             dof_vel = -0.
@@ -122,7 +126,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             stand_still = -0.
 
             # Overrides
-            orientation = -5.0
+            orientation = -5.0 
             torques = -0.000025
             feet_air_time = 1.0
             # feet_contact_forces = -0.01
@@ -174,6 +178,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         privileged_height_dim = PD_PRIV_HEIGHT_DIM
         privileged_critic_dim = PD_PRIV_CRITIC_DIM
         privileged_supervision_coef = 1.0
+        sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class algorithm(Go2RoughCfgPPO.algorithm):
         amp_enabled = True   # 启用混合精度
