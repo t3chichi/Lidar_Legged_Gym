@@ -11,6 +11,38 @@ from rsl_rl.networks import Memory
 from rsl_rl.utils import resolve_nn_activation, unpad_trajectories
 
 
+# --- Quaternion utilities (no isaacgym dependency) ---
+
+def _euler_to_quat(roll: float, pitch: float, yaw: float) -> torch.Tensor:
+    """Convert Euler angles (radians) to xyzw quaternion tensor."""
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    return torch.tensor([
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    ])
+
+
+def _quat_conjugate(q: torch.Tensor) -> torch.Tensor:
+    """Conjugate of an xyzw quaternion."""
+    return q * torch.tensor([-1, -1, -1, 1], device=q.device)
+
+
+def _quat_apply(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    """Apply quaternion rotation to vector(s). q: (4,), v: (..., 3)."""
+    q_vec = q[:3]  # (3,)
+    q_scalar = q[3]  # scalar
+    q_vec_exp = q_vec.expand(*v.shape[:-1], 3)  # (..., 3)
+    t = 2.0 * torch.cross(q_vec_exp, v, dim=-1)
+    return v + q_scalar * t + torch.cross(q_vec_exp, t, dim=-1)
+
+
 class PDRiskNetActorCritic(nn.Module):
     """PD-RiskNet actor-critic.
 
@@ -46,6 +78,7 @@ class PDRiskNetActorCritic(nn.Module):
         privileged_height_dim: int = 187,
         privileged_critic_dim: int | None = None,
         privileged_supervision_coef: float = 0.5,
+        sensor_offset_rpy: list | None = None,
         **kwargs,
     ):
         if kwargs:
@@ -66,6 +99,14 @@ class PDRiskNetActorCritic(nn.Module):
         self.split_theta = float(split_theta_deg) * math.pi / 180.0
         self.proximal_feature_dim = int(proximal_feature_dim)
         self.distal_feature_dim = int(distal_feature_dim)
+
+        # Sensor offset quaternion conjugate: transforms base-frame points back
+        # to sensor frame so that the proximal/distal split uses the original
+        # spherical-grid elevation angles.  Falls back to identity (base-frame
+        # split) when no offset is specified.
+        self._sensor_conj: torch.Tensor | None = None
+        if sensor_offset_rpy is not None and any(v != 0.0 for v in sensor_offset_rpy):
+            self._sensor_conj = _quat_conjugate(_euler_to_quat(*sensor_offset_rpy))
         self.privileged_height_dim = int(privileged_height_dim)
         self.privileged_critic_dim = int(privileged_critic_dim) if privileged_critic_dim is not None else self.privileged_height_dim
         self.privileged_supervision_coef = float(privileged_supervision_coef)
@@ -367,6 +408,15 @@ class PDRiskNetActorCritic(nn.Module):
     def _build_sampling_plan(self, lidar_hist: torch.Tensor):
         # Build once from a representative scan: keeps runtime overhead low.
         ref_points = lidar_hist[0, -1]
+
+        # Rotate base-frame points back to sensor frame for correct
+        # proximal/distal split.  The sensor may be mounted with a large
+        # offset (e.g. upside-down), which would make a base-frame split
+        # map most points to the wrong side of theta_threshold.
+        if self._sensor_conj is not None:
+            q = self._sensor_conj.to(device=lidar_hist.device, dtype=lidar_hist.dtype)
+            ref_points = _quat_apply(q, ref_points)
+
         x = ref_points[:, 0]
         y = ref_points[:, 1]
         z = ref_points[:, 2]

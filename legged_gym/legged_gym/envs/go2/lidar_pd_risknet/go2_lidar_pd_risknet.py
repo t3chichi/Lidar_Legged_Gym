@@ -377,30 +377,68 @@ class Go2LidarPDRiskNet(Go2):
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
     def _draw_debug_vis(self):
-        """Draw LiDAR points and velocity vectors for quick policy debugging."""
+        """Draw LiDAR points (proximal yellow, distal red) and velocity vectors."""
         if self.viewer is None:
             return
 
         self.gym.clear_lines(self.viewer)
         env_id = 0
 
-        # Draw a lightweight subset of LiDAR points in world frame.
+        # Draw color-coded LiDAR points: proximal (elevation >= 5°) in yellow,
+        # distal (elevation < 5°) in red.
+        # Compute theta in sensor frame to match the network's _build_sampling_plan,
+        # which correctly splits along the sensor's native spherical grid.
         pts_base = self.lidar_points_base[env_id]
+        sensor_q = self._sensor_offset_quat[env_id]  # (4,)
+        # Manual inverse rotation: conjugate and apply (isaacgym's torch_utils
+        # requires matched batch dimensions, which is awkward for (4,) @ (N, 3)).
+        conj = sensor_q * torch.tensor([-1, -1, -1, 1], device=self.device)
+        conj_vec = conj[:3].unsqueeze(0).expand(pts_base.shape[0], 3)  # (N, 3)
+        t = 2.0 * torch.cross(conj_vec, pts_base, dim=-1)
+        pts_base_sensor = pts_base + conj[3] * t + torch.cross(conj_vec, t, dim=-1)
+        eps = 1e-8
+        theta = torch.atan2(pts_base_sensor[:, 2], torch.linalg.norm(pts_base_sensor[:, :2], dim=1) + eps)
+        split_rad = float(self.cfg.pd_risknet.split_theta_deg) * math.pi / 180.0
+        prox_mask = theta >= split_rad
+        dist_mask = ~prox_mask
+
+        base_pos = self.base_pos[env_id].unsqueeze(0).repeat(pts_base.shape[0], 1)
+        base_quat = self.base_quat[env_id].unsqueeze(0).repeat(pts_base.shape[0], 1)
+        pts_world = base_pos + quat_apply(base_quat, pts_base)
+
+        # Diagnostic: print theta distribution once (env 0, first frame only).
+        if not hasattr(self, '_printed_theta_dist'):
+            self._printed_theta_dist = True
+            theta_deg = theta * 180.0 / math.pi
+            print(f"[DEBUG] theta range: [{theta_deg.min().item():.2f}°, {theta_deg.max().item():.2f}°]")
+            print(f"[DEBUG] theta mean: {theta_deg.mean().item():.2f}°, split_at: {self.cfg.pd_risknet.split_theta_deg}°")
+            print(f"[DEBUG] num proximal (theta >= {self.cfg.pd_risknet.split_theta_deg}°): {prox_mask.sum().item()}")
+            print(f"[DEBUG] num distal (theta < {self.cfg.pd_risknet.split_theta_deg}°): {dist_mask.sum().item()}")
+            print(f"[DEBUG] z range: [{pts_base[:, 2].min().item():.3f}, {pts_base[:, 2].max().item():.3f}]")
+            print(f"[DEBUG] pts with z>0: {(pts_base[:, 2] > 0).sum().item()} / {pts_base.shape[0]}")
+
+        # Downsample to ~256 points total for performance.
         num_pts = pts_base.shape[0]
         max_draw = min(256, num_pts)
-        if max_draw > 0:
-            step = max(1, num_pts // max_draw)
-            idx = torch.arange(0, num_pts, step, device=self.device)[:max_draw]
-            pts_sel = pts_base[idx]
-            base_pos = self.base_pos[env_id].unsqueeze(0).repeat(pts_sel.shape[0], 1)
-            base_quat = self.base_quat[env_id].unsqueeze(0).repeat(pts_sel.shape[0], 1)
-            pts_world = base_pos + quat_apply(base_quat, pts_sel)
+        step = max(1, num_pts // max_draw)
 
-            sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 0, 0))
-            pts_np = pts_world.detach().cpu().numpy()
-            for p in pts_np:
+        # Draw proximal points (yellow)
+        prox_pts = pts_world[prox_mask].cpu().numpy()
+        if len(prox_pts) > 0:
+            prox_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
+            for i in range(0, len(prox_pts), step):
+                p = prox_pts[i]
                 sphere_pose = gymapi.Transform(gymapi.Vec3(float(p[0]), float(p[1]), float(p[2])), r=None)
-                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
+                gymutil.draw_lines(prox_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
+
+        # Draw distal points (red)
+        dist_pts = pts_world[dist_mask].cpu().numpy()
+        if len(dist_pts) > 0:
+            dist_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 0, 0))
+            for i in range(0, len(dist_pts), step):
+                p = dist_pts[i]
+                sphere_pose = gymapi.Transform(gymapi.Vec3(float(p[0]), float(p[1]), float(p[2])), r=None)
+                gymutil.draw_lines(dist_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
 
         # Draw command direction (green) and avoidance direction (yellow).
         start = self.base_pos[env_id].detach().cpu().numpy()
