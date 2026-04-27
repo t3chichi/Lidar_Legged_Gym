@@ -9,6 +9,7 @@ from isaacgym import gymapi, gymutil
 from legged_gym.envs.go2.go2 import Go2
 from LidarSensor.lidar_sensor import LidarSensor
 from LidarSensor.sensor_config.lidar_sensor_config import LidarConfig, LidarType
+from legged_gym.utils.math_utils import quat_apply_yaw
 
 
 class Go2LidarPDRiskNet(Go2):
@@ -150,6 +151,33 @@ class Go2LidarPDRiskNet(Go2):
             torch.tensor(float(rpy[2]), device=self.device),
         )
         self._sensor_offset_quat = offset_q.view(1, 4).repeat(self.num_envs, 1)
+
+    def _init_height_points(self):
+        """Override: support range+count (linspace) and legacy explicit-point-list configs.
+
+        Stored grid metadata (self._height_grid_x/y) is used later by
+        _draw_debug_vis to render the grid boundary.
+        """
+        t = self.cfg.terrain
+        if hasattr(t, "measured_grid_x_range"):
+            x_min, x_max = t.measured_grid_x_range
+            y_min, y_max = t.measured_grid_y_range
+            x = torch.linspace(x_min, x_max, int(t.measured_grid_x_count), device=self.device)
+            y = torch.linspace(y_min, y_max, int(t.measured_grid_y_count), device=self.device)
+        else:
+            # Legacy path: explicit point lists from the parent config.
+            x = torch.tensor(t.measured_points_x, device=self.device)
+            y = torch.tensor(t.measured_points_y, device=self.device)
+
+        grid_x, grid_y = torch.meshgrid(x, y)
+        self.num_height_points = grid_x.numel()
+        points = torch.zeros(self.num_envs, self.num_height_points, 3, device=self.device, requires_grad=False)
+        points[:, :, 0] = grid_x.flatten()
+        points[:, :, 1] = grid_y.flatten()
+        # Cache grid vectors for the boundary visualisation in _draw_debug_vis.
+        self._height_grid_x = x
+        self._height_grid_y = y
+        return points
 
     def _update_lidar_history(self):
         if self.lidar_sensor is None:
@@ -440,30 +468,52 @@ class Go2LidarPDRiskNet(Go2):
                 sphere_pose = gymapi.Transform(gymapi.Vec3(float(p[0]), float(p[1]), float(p[2])), r=None)
                 gymutil.draw_lines(dist_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
 
-        # Draw command direction (green) and avoidance direction (yellow).
+        # --- 高度测量网格边界（青色） ---
+        # 在机体坐标系中沿网格最外圈走一圈，用 quat_apply_yaw 转到世界坐标。
+        hx = self._height_grid_x
+        hy = self._height_grid_y
+        nx = len(hx)
+        ny = len(hy)
+        boundary = []
+        # 下边: y=hy[0], x 从小到大
+        boundary.extend([(hx[i].item(), hy[0].item(), 0.0) for i in range(nx)])
+        # 右边: x=hx[-1], y 从小到大（跳过起点）
+        boundary.extend([(hx[-1].item(), hy[j].item(), 0.0) for j in range(1, ny)])
+        # 上边: y=hy[-1], x 从大到小（跳过起点）
+        boundary.extend([(hx[i].item(), hy[-1].item(), 0.0) for i in range(nx - 2, -1, -1)])
+        # 左边: x=hx[0], y 从大到小（跳过起点和终点）
+        boundary.extend([(hx[0].item(), hy[j].item(), 0.0) for j in range(ny - 2, 0, -1)])
+        b_pts = torch.tensor(boundary, device=self.device, dtype=torch.float)  # (N, 3)
+        b_quat = self.base_quat[env_id].unsqueeze(0).expand(b_pts.shape[0], 4)
+        b_pos = self.base_pos[env_id, :3].unsqueeze(0).expand(b_pts.shape[0], 3)
+        b_world = quat_apply_yaw(b_quat, b_pts) + b_pos
+        b_world[:, 2] = 0.0
+        b_list = b_world.cpu().numpy().tolist()
+        # Explicit segment pairs (not polyline) to avoid origin→first-point artifact.
+        n_seg = len(b_list)
+        verts = []
+        for i in range(n_seg):
+            j = (i + 1) % n_seg
+            verts.extend([*b_list[i], *b_list[j]])
+        self.gym.add_lines(self.viewer, self.envs[env_id], n_seg,
+                           np.array(verts, dtype=np.float32),
+                           [(0, 1, 0)] * n_seg)
+
+        # Draw avoidance direction (yellow) and combined velocity (blue).
         start = self.base_pos[env_id].detach().cpu().numpy()
         base_quat = self.base_quat[env_id]            # 保留在 GPU 上用于旋转
 
-        # 获取机体坐标系下的命令与避障速度（保持为 torch 张量）
-        cmd_xy = self.commands[env_id, :2].detach()
+        # 获取机体坐标系下的避障速度（保持为 torch 张量）
         avoid_xy = self.v_avoid[env_id].detach()
 
         # 构造三维机体向量，并用四元数旋转到世界坐标系
-        cmd_body = torch.tensor([cmd_xy[0].item(), cmd_xy[1].item(), 0.0], device=self.device)
         avoid_body = torch.tensor([avoid_xy[0].item(), avoid_xy[1].item(), 0.0], device=self.device)
 
-        cmd_world = quat_apply(base_quat, cmd_body).cpu().numpy()
         avoid_world = quat_apply(base_quat, avoid_body).cpu().numpy()
 
-        cmd_vec = cmd_world.astype(np.float32)
         avoid_vec = avoid_world.astype(np.float32)
 
-        cmd_norm = np.linalg.norm(cmd_vec[:2])
         avoid_norm = np.linalg.norm(avoid_vec[:2])
-        if cmd_norm > 1.0e-6:
-            self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + 0.6 * cmd_vec / cmd_norm).tolist(),
-                                width=0.01, color=(0, 1, 0))
         if avoid_norm > 1.0e-6:
             self.vis.draw_arrow(env_id, start.tolist(),
                                 (start + 0.6 * avoid_vec / avoid_norm).tolist(),

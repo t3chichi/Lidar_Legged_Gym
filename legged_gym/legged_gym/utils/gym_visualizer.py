@@ -122,14 +122,23 @@ class GymVisualizer:
         :param rad: Line radius
         :param color: Line color
         """
-        # vertices = np.array(points, dtype=np.float32).flatten()
-        vertices_mat = np.array(points, dtype=np.float32)
-        dir_mat = np.diff(vertices_mat, axis=0)
-        dir_mat = np.concatenate([dir_mat, dir_mat[-1:]], axis=0)
-        perp_dir1_mat = np.cross(dir_mat, np.random.rand(3))
-        perp_dir1_mat = perp_dir1_mat / np.linalg.norm(perp_dir1_mat, axis=1)[:, None]
+        vertices_mat = np.array(points, dtype=np.float32)        # (N, 3)
+        dir_mat = np.diff(vertices_mat, axis=0)                   # (N-1, 3)
+        dir_mat = np.concatenate([dir_mat, dir_mat[-1:]], axis=0) # (N, 3)
+        # Safe perpendicular: cross with (1,0,0); fallback (0,1,0) if parallel.
+        ref = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+        perp_dir1_mat = np.cross(dir_mat, ref)                    # (N, 3)
+        norms = np.linalg.norm(perp_dir1_mat, axis=1, keepdims=True)
+        zero_mask = norms.squeeze(-1) < 1e-8
+        if zero_mask.any():
+            perp_dir1_mat[zero_mask] = np.cross(
+                dir_mat[zero_mask], np.array([[0.0, 1.0, 0.0]], dtype=np.float32))
+        norms = np.linalg.norm(perp_dir1_mat, axis=1, keepdims=True)
+        norms = np.clip(norms, 1e-12, None)
+        perp_dir1_mat = perp_dir1_mat / norms
+        # Second perpendicular = cross(dir, perp1), always safe since perp1 is non-zero.
         perp_dir2_mat = np.cross(dir_mat, perp_dir1_mat)
-        perp_dir2_mat = perp_dir2_mat / np.linalg.norm(perp_dir2_mat, axis=1)[:, None]
+        perp_dir2_mat = perp_dir2_mat / np.linalg.norm(perp_dir2_mat, axis=1, keepdims=True).clip(1e-12, None)
         for i in range(resolution):
             ver = (vertices_mat
                    + perp_dir1_mat * rad * np.cos(2 * np.pi * i / resolution)
