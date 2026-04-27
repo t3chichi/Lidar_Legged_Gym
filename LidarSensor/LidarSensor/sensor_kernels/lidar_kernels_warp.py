@@ -48,6 +48,9 @@ class LidarWarpKernels:
                 pixels[env_id, cam_id, scan_line, point_index] = ray_origin + dist * ray_direction_world
             else:
                 pixels[env_id, cam_id, scan_line, point_index] = dist * ray_dir
+        else:
+            local_dist[env_id, cam_id, scan_line, point_index] = 0.0
+            pixels[env_id, cam_id, scan_line, point_index] = wp.vec3(0.0, 0.0, 0.0)
 
     @staticmethod
     @wp.kernel
@@ -111,4 +114,7 @@ class LidarWarpKernels:
                 # For local coordinates, return hit point relative to sensor
                 hit_point_world = ray_origin_world + dist * ray_direction_world
                 pixels[env_id, cam_id, scan_line, point_index] = wp.quat_rotate(wp.quat_inverse(sensor_quaternion), hit_point_world - sensor_position)
+        else:
+            local_dist[env_id, cam_id, scan_line, point_index] = 0.0
+            pixels[env_id, cam_id, scan_line, point_index] = wp.vec3(0.0, 0.0, 0.0)
 

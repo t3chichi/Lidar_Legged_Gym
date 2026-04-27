@@ -455,19 +455,22 @@ class LidarSensor(BaseSensor):
             return slice(first, last + 1)  # stop is exclusive
         return None  # not contiguous
     def reset(self, env_ids=None, value=0.0):
-        """Reset selected environments (or all) in lidar_warp_tensor"""
+        """Reset selected environments (or all) in lidar_warp_tensor and lidar_dist_tensor"""
         if env_ids is None:
             self.lidar_warp_tensor.fill_(value)
+            self.lidar_dist_tensor.fill_(0.0)
             return
 
         # Accept single int
         if isinstance(env_ids, int):
             self.lidar_warp_tensor[env_ids].fill_(value)
+            self.lidar_dist_tensor[env_ids].fill_(0.0)
             return
 
         # Accept slice directly
         if isinstance(env_ids, slice):
             self.lidar_warp_tensor[env_ids].fill_(value)
+            self.lidar_dist_tensor[env_ids].fill_(0.0)
             return
 
         # Torch tensor or list/tuple of ints
@@ -477,10 +480,12 @@ class LidarSensor(BaseSensor):
             sl = self.tensor_indices_to_slice(env_ids)
             if sl is not None:
                 self.lidar_warp_tensor[sl].fill_(value)
+                self.lidar_dist_tensor[sl].fill_(0.0)
             else:
                 # Fallback: per-index fill
                 for i in env_ids.tolist():
                     self.lidar_warp_tensor[int(i)].fill_(value)
+                    self.lidar_dist_tensor[int(i)].fill_(0.0)
             return
 
         if isinstance(env_ids, (list, tuple)):
@@ -490,9 +495,11 @@ class LidarSensor(BaseSensor):
             sl = self.tensor_indices_to_slice(t)
             if sl is not None:
                 self.lidar_warp_tensor[sl].fill_(value)
+                self.lidar_dist_tensor[sl].fill_(0.0)
             else:
                 for i in env_ids:
                     self.lidar_warp_tensor[int(i)].fill_(value)
+                    self.lidar_dist_tensor[int(i)].fill_(0.0)
             return
 
         raise TypeError(f"Unsupported env_ids type: {type(env_ids)}")
