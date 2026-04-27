@@ -154,7 +154,10 @@ class Terrain:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
 
         elif choice < self.proportions[7]:
-            pillar_field_terrain(terrain, difficulty, self.cfg)
+            if hasattr(self.cfg, "corridor_width"):
+                curved_corridor_terrain(terrain, difficulty, self.cfg)
+            else:
+                pillar_field_terrain(terrain, difficulty, self.cfg)
         
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.)
@@ -171,13 +174,18 @@ class Terrain:
         end_y = self.border + (j + 1) * self.width_per_env_pixels
         self.height_field_raw[start_x: end_x, start_y:end_y] = terrain.height_field_raw
 
-        env_origin_x = (i + 0.5) * self.env_length
-        env_origin_y = (j + 0.5) * self.env_width
-        x1 = int((self.env_length/2. - 1) / terrain.horizontal_scale)
-        x2 = int((self.env_length/2. + 1) / terrain.horizontal_scale)
-        y1 = int((self.env_width/2. - 1) / terrain.horizontal_scale)
-        y2 = int((self.env_width/2. + 1) / terrain.horizontal_scale)
-        env_origin_z = np.min(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
+        if hasattr(self.cfg, "corridor_width"):
+            env_origin_x = self.cfg.corridor_width / 2.0
+            env_origin_y = self.cfg.terrain_width / 2.0
+            env_origin_z = 0.0
+        else:
+            env_origin_x = (i + 0.5) * self.env_length
+            env_origin_y = (j + 0.5) * self.env_width
+            x1 = int((self.env_length/2. - 1) / terrain.horizontal_scale)
+            x2 = int((self.env_length/2. + 1) / terrain.horizontal_scale)
+            y1 = int((self.env_width/2. - 1) / terrain.horizontal_scale)
+            y2 = int((self.env_width/2. + 1) / terrain.horizontal_scale)
+            env_origin_z = np.min(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
 
 
@@ -294,6 +302,86 @@ def pillar_field_terrain(terrain, difficulty, cfg):
         y1 = max(0, y1)
         y2 = min(terrain.length, y2)
         terrain.height_field_raw[x1:x2, y1:y2] = h_px
+
+    return terrain
+
+
+def curved_corridor_terrain(terrain, difficulty, cfg):
+    """生成正弦曲线弯曲通道地形，两侧由墙壁围成，两端半圆形封口。
+
+    可配置参数（通过 cfg 传入）:
+        corridor_width:  通道宽度 (m), 默认 3.0
+        wall_height:     墙壁高度 (m), 默认 0.8
+        wall_thickness:  墙壁厚度 (m), 默认 0.4
+        amplitude:       正弦波振幅 (m), 默认 1.5
+        num_cycles:      正弦波周期数, 默认 1.5
+        terrain_length:  地块长度 (m), 默认从 cfg.terrain_length 读取
+    """
+    corridor_width = float(getattr(cfg, "corridor_width", 3.0))
+    wall_height = float(getattr(cfg, "wall_height", 0.8))
+    wall_thickness = float(getattr(cfg, "wall_thickness", 0.4))
+    amplitude = float(getattr(cfg, "amplitude", 1.5))
+    num_cycles = float(getattr(cfg, "num_cycles", 1.5))
+    terrain_len = float(getattr(cfg, "terrain_length", 12.0))
+
+    hs = terrain.horizontal_scale
+    vs = terrain.vertical_scale
+
+    corridor_width_px = int(corridor_width / hs)
+    wall_thickness_px = int(wall_thickness / hs)
+    amplitude_px = int(amplitude / hs)
+    wall_height_px = int(wall_height / vs)
+
+    W = terrain.width
+    L = terrain.length
+    mid_y = W // 2
+
+    half_cw = corridor_width_px // 2
+    radius_px = half_cw
+    x0 = radius_px
+    x1 = L - radius_px
+    corridor_len_px = x1 - x0
+    if corridor_len_px <= 0:
+        corridor_len_px = 1
+
+    # 遍历每个像素，用 numpy 向量化计算
+    xx = np.arange(L)
+    yy = np.arange(W)
+    xv, yv = np.meshgrid(xx, yy, indexing='ij')
+
+    # 主通道区域: 计算每个像素到中心线的垂直距离
+    phase = 2.0 * np.pi * num_cycles * (xv.astype(np.float64) - x0) / corridor_len_px
+    center_y = mid_y + amplitude_px * np.sin(phase)
+    dy = np.abs(yv - center_y)
+
+    # 半圆形端盖
+    dist_left = np.sqrt((xv - x0) ** 2 + (yv - mid_y) ** 2)
+    dist_right = np.sqrt((xv - x1) ** 2 + (yv - mid_y) ** 2)
+
+    in_corridor = (
+        ((xv >= x0) & (xv <= x1) & (dy <= half_cw)) |
+        ((xv < x0) & (dist_left <= radius_px)) |
+        ((xv > x1) & (dist_right <= radius_px))
+    )
+
+    # 墙壁区域: 通道外侧 wall_thickness 范围内
+    half_outer = half_cw + wall_thickness_px
+    radius_outer_px = radius_px + wall_thickness_px
+
+    in_wall = (
+        ((xv >= x0) & (xv <= x1) & (dy > half_cw) & (dy <= half_outer)) |
+        ((xv < x0) & (dist_left > radius_px) & (dist_left <= radius_outer_px)) |
+        ((xv > x1) & (dist_right > radius_px) & (dist_right <= radius_outer_px))
+    )
+
+    # 初始化高度图：全部为墙壁高度（通道外部默认都是墙）
+    terrain.height_field_raw[:, :] = wall_height_px
+    terrain.height_field_raw[in_corridor] = 0
+
+    # 存储终点信息到 cfg，供环境读取
+    cfg.goal_center_x = float(terrain_len) - corridor_width / 2.0
+    cfg.goal_center_y = float(terrain_len) / 2.0
+    cfg.goal_radius = corridor_width / 2.0
 
     return terrain
 

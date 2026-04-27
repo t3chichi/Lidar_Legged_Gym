@@ -311,16 +311,40 @@ class Go2LidarPDRiskNet(Go2):
 
     def check_termination(self):
         super().check_termination()
-        if not getattr(self.cfg.env, "enable_fall_termination", False):
-            return
+        # 翻转/跌落终止
+        if getattr(self.cfg.env, "enable_fall_termination", False):
+            g_thresh = float(getattr(self.cfg.env, "fall_projected_gravity_z_threshold", -0.1))
+            h_thresh = float(getattr(self.cfg.env, "fall_base_height_threshold", 0.12))
+            flipped = self.projected_gravity[:, 2] > g_thresh
+            low_base = self.base_pos[:, 2] < h_thresh
+            self.reset_buf |= (flipped | low_base)
 
-        # projected_gravity[:, 2] is close to -1 when upright and increases as the robot flips.
-        g_thresh = float(getattr(self.cfg.env, "fall_projected_gravity_z_threshold", -0.1))
-        h_thresh = float(getattr(self.cfg.env, "fall_base_height_threshold", 0.12))
+        # 通道终点到达检测
+        pd_cfg = self.cfg.pd_risknet
+        if hasattr(self.cfg.terrain, "goal_center_x") and getattr(pd_cfg, "goal_enabled", False):
+            gx = self.cfg.terrain.goal_center_x
+            gy = self.cfg.terrain.goal_center_y
+            gr = self.cfg.terrain.goal_radius
+            dist = torch.sqrt(
+                (self.base_pos[:, 0] - gx) ** 2 +
+                (self.base_pos[:, 1] - gy) ** 2
+            )
+            reached = (dist < gr) & (self.base_pos[:, 0] > gx)
+            self.reset_buf |= reached
 
-        flipped = self.projected_gravity[:, 2] > g_thresh
-        low_base = self.base_pos[:, 2] < h_thresh
-        self.reset_buf |= (flipped | low_base)
+    def _reward_goal(self):
+        pd_cfg = self.cfg.pd_risknet
+        if not hasattr(self.cfg.terrain, "goal_center_x") or not getattr(pd_cfg, "goal_enabled", False):
+            return torch.zeros(self.num_envs, device=self.device)
+        gx = self.cfg.terrain.goal_center_x
+        gy = self.cfg.terrain.goal_center_y
+        gr = self.cfg.terrain.goal_radius
+        dist = torch.sqrt(
+            (self.base_pos[:, 0] - gx) ** 2 +
+            (self.base_pos[:, 1] - gy) ** 2
+        )
+        reached = (dist < gr) & (self.base_pos[:, 0] > gx)
+        return reached.float() * pd_cfg.goal_reward
 
     def _update_terrain_curriculum(self, env_ids):
         """Override: use a fixed move_down threshold decoupled from episode_length_s.
