@@ -468,7 +468,7 @@ class Go2LidarPDRiskNet(Go2):
                 sphere_pose = gymapi.Transform(gymapi.Vec3(float(p[0]), float(p[1]), float(p[2])), r=None)
                 gymutil.draw_lines(dist_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
 
-        # --- 高度测量网格边界（青色） ---
+        # --- 高度测量网格边界（绿色） ---
         # 在机体坐标系中沿网格最外圈走一圈，用 quat_apply_yaw 转到世界坐标。
         hx = self._height_grid_x
         hy = self._height_grid_y
@@ -489,15 +489,15 @@ class Go2LidarPDRiskNet(Go2):
         b_world = quat_apply_yaw(b_quat, b_pts) + b_pos
         b_world[:, 2] = 0.0
         b_list = b_world.cpu().numpy().tolist()
-        # Explicit segment pairs (not polyline) to avoid origin→first-point artifact.
-        n_seg = len(b_list)
-        verts = []
-        for i in range(n_seg):
-            j = (i + 1) % n_seg
-            verts.extend([*b_list[i], *b_list[j]])
-        self.gym.add_lines(self.viewer, self.envs[env_id], n_seg,
-                           np.array(verts, dtype=np.float32),
-                           [(0, 1, 0)] * n_seg)
+        # 只取 4 个角点：底边 nx 点 → 右边 ny-1 点 → 上边 nx-1 点 → 左边 ny-2 点
+        idx_bl = 0                              # 左下
+        idx_br = nx - 1                         # 右下
+        idx_tr = nx - 1 + ny - 1                # 右上
+        idx_tl = nx - 1 + ny - 1 + nx - 1       # 左上
+        corners = [b_list[idx_bl], b_list[idx_br], b_list[idx_tr], b_list[idx_tl]]
+        for i in range(4):
+            self.vis.draw_boldline(env_id, [corners[i], corners[(i + 1) % 4]],
+                                   rad=0.01, resolution=6, color=(0, 1, 0))
 
         # Draw avoidance direction (yellow) and combined velocity (blue).
         start = self.base_pos[env_id].detach().cpu().numpy()
