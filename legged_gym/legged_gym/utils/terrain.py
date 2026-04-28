@@ -50,6 +50,7 @@ class Terrain:
 
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
         self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
+        self.spawn_angles = np.zeros((cfg.num_rows, cfg.num_cols))
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
@@ -175,8 +176,9 @@ class Terrain:
         self.height_field_raw[start_x: end_x, start_y:end_y] = terrain.height_field_raw
 
         if hasattr(self.cfg, "corridor_width"):
-            env_origin_x = self.cfg.corridor_width / 2.0
-            env_origin_y = self.cfg.terrain_width / 2.0
+            margin = float(getattr(self.cfg, "end_margin", 0.5))
+            env_origin_x = i * self.env_length + self.cfg.terrain_width / 2.0
+            env_origin_y = j * self.env_width + self.cfg.corridor_width / 2.0 + margin
             env_origin_z = 0.0
         else:
             env_origin_x = (i + 0.5) * self.env_length
@@ -187,6 +189,8 @@ class Terrain:
             y2 = int((self.env_width/2. + 1) / terrain.horizontal_scale)
             env_origin_z = np.min(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
+        if hasattr(terrain, "spawn_angle"):
+            self.spawn_angles[i, j] = terrain.spawn_angle
 
 
 def gap_terrain(terrain, gap_size, platform_size=1.):
@@ -309,6 +313,10 @@ def pillar_field_terrain(terrain, difficulty, cfg):
 def curved_corridor_terrain(terrain, difficulty, cfg):
     """生成正弦曲线弯曲通道地形，两侧由墙壁围成，两端半圆形封口。
 
+    坐标系约定:
+        height_field_raw 形状 (size_x, size_y)，轴0=X方向，轴1=Y方向
+        通道沿 Y 轴延伸，中心线在 X 方向正弦摆动。
+
     可配置参数（通过 cfg 传入）:
         corridor_width:  通道宽度 (m), 默认 3.0
         wall_height:     墙壁高度 (m), 默认 0.8
@@ -316,6 +324,7 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
         amplitude:       正弦波振幅 (m), 默认 1.5
         num_cycles:      正弦波周期数, 默认 1.5
         terrain_length:  地块长度 (m), 默认从 cfg.terrain_length 读取
+        end_margin:      通道两端距地块边缘的距离 (m), 默认 0.5
     """
     corridor_width = float(getattr(cfg, "corridor_width", 3.0))
     wall_height = float(getattr(cfg, "wall_height", 0.8))
@@ -323,65 +332,114 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     amplitude = float(getattr(cfg, "amplitude", 1.5))
     num_cycles = float(getattr(cfg, "num_cycles", 1.5))
     terrain_len = float(getattr(cfg, "terrain_length", 12.0))
+    end_margin = float(getattr(cfg, "end_margin", 0.5))
+
+    if getattr(cfg, "randomize_sign", False) and np.random.rand() > 0.5:
+        amplitude = -amplitude
 
     hs = terrain.horizontal_scale
     vs = terrain.vertical_scale
 
     corridor_width_px = int(corridor_width / hs)
-    wall_thickness_px = int(wall_thickness / hs)
     amplitude_px = int(amplitude / hs)
     wall_height_px = int(wall_height / vs)
 
-    W = terrain.width
-    L = terrain.length
-    mid_y = W // 2
+    # 像素尺寸: size_x=X方向(轴0), size_y=Y方向(轴1)
+    size_x = terrain.width
+    size_y = terrain.length
+    mid_x = size_x // 2
 
     half_cw = corridor_width_px // 2
-    radius_px = half_cw
-    x0 = radius_px
-    x1 = L - radius_px
-    corridor_len_px = x1 - x0
-    if corridor_len_px <= 0:
-        corridor_len_px = 1
+    end_margin_px = int(end_margin / hs)
 
-    # 遍历每个像素，用 numpy 向量化计算
-    xx = np.arange(L)
-    yy = np.arange(W)
-    xv, yv = np.meshgrid(xx, yy, indexing='ij')
+    # 通道沿 Y 轴起止位置（含端部间距）
+    y_start = half_cw + end_margin_px
+    y_end = size_y - half_cw - end_margin_px
+    corridor_len_px = max(y_end - y_start, 1)
 
-    # 主通道区域: 计算每个像素到中心线的垂直距离
-    phase = 2.0 * np.pi * num_cycles * (xv.astype(np.float64) - x0) / corridor_len_px
-    center_y = mid_y + amplitude_px * np.sin(phase)
-    dy = np.abs(yv - center_y)
+    # 坐标网格，匹配 height_field_raw 形状 (size_x, size_y)
+    x_coord, y_coord = np.meshgrid(np.arange(size_x), np.arange(size_y), indexing='ij')
 
-    # 半圆形端盖
-    dist_left = np.sqrt((xv - x0) ** 2 + (yv - mid_y) ** 2)
-    dist_right = np.sqrt((xv - x1) ** 2 + (yv - mid_y) ** 2)
+    # 通道中心线 X 位置（随 Y 正弦变化）
+    phase = 2.0 * np.pi * num_cycles * (y_coord.astype(np.float64) - y_start) / corridor_len_px
+    center_x = mid_x + amplitude_px * np.sin(phase)
+    dx = np.abs(x_coord - center_x)
+
+    # 两端半圆形封口：圆心 (y_start, mid_x) 和 (y_end, mid_x)，半径 = half_cw
+    dist_start = np.sqrt((y_coord - y_start) ** 2 + (x_coord - mid_x) ** 2)
+    dist_end = np.sqrt((y_coord - y_end) ** 2 + (x_coord - mid_x) ** 2)
 
     in_corridor = (
-        ((xv >= x0) & (xv <= x1) & (dy <= half_cw)) |
-        ((xv < x0) & (dist_left <= radius_px)) |
-        ((xv > x1) & (dist_right <= radius_px))
+        ((y_coord >= y_start) & (y_coord <= y_end) & (dx <= half_cw)) |
+        ((y_coord < y_start) & (dist_start <= half_cw)) |
+        ((y_coord > y_end) & (dist_end <= half_cw))
     )
 
-    # 墙壁区域: 通道外侧 wall_thickness 范围内
-    half_outer = half_cw + wall_thickness_px
-    radius_outer_px = radius_px + wall_thickness_px
-
-    in_wall = (
-        ((xv >= x0) & (xv <= x1) & (dy > half_cw) & (dy <= half_outer)) |
-        ((xv < x0) & (dist_left > radius_px) & (dist_left <= radius_outer_px)) |
-        ((xv > x1) & (dist_right > radius_px) & (dist_right <= radius_outer_px))
-    )
-
-    # 初始化高度图：全部为墙壁高度（通道外部默认都是墙）
+    # 初始化高度图：全图墙壁，通道区域覆盖为地板
     terrain.height_field_raw[:, :] = wall_height_px
     terrain.height_field_raw[in_corridor] = 0
 
-    # 存储终点信息到 cfg，供环境读取
-    cfg.goal_center_x = float(terrain_len) - corridor_width / 2.0
-    cfg.goal_center_y = float(terrain_len) / 2.0
+    # --- 通道内随机方柱 ---
+    pillar_count = int(getattr(cfg, "pillar_count", 0))
+    if pillar_count > 0:
+        pillar_hw = float(getattr(cfg, "pillar_half_width", 0.15))
+        pillar_min_sep = float(getattr(cfg, "pillar_min_separation", 1.0))
+        pillar_wall_margin = float(getattr(cfg, "pillar_wall_margin", 0.5))
+        pillar_center_margin = float(getattr(cfg, "pillar_centerline_margin", 0.0))
+        pillar_margin_end = float(getattr(cfg, "pillar_margin_end", 1.5))
+        pillar_max_attempts = int(getattr(cfg, "pillar_max_attempts", 50))
+
+        hw_px = int(pillar_hw / hs)
+        min_sep_px = int(pillar_min_sep / hs)
+        wall_margin_px = int(pillar_wall_margin / hs)
+        center_margin_px = int(pillar_center_margin / hs)
+        margin_end_px = int(pillar_margin_end / hs)
+
+        placed = []
+        for _ in range(pillar_count):
+            for _ in range(pillar_max_attempts):
+                # Y 坐标：在通道有效长度内随机
+                py = np.random.randint(y_start + margin_end_px,
+                                       max(y_start + margin_end_px + 1, y_end - margin_end_px))
+                phase_p = 2.0 * np.pi * num_cycles * (py - y_start) / corridor_len_px
+                cx = mid_x + int(amplitude_px * np.sin(phase_p))
+                max_dx = max(1, half_cw - hw_px - wall_margin_px)
+
+                # X 坐标：在中心线两侧随机，避开中心线禁区
+                px = np.random.randint(cx - max_dx, cx + max_dx + 1)
+                if abs(px - cx) < center_margin_px:
+                    if cx - max_dx < cx - center_margin_px:
+                        lo = cx - max_dx
+                        hi = max(cx - center_margin_px, lo + 1)
+                        px = np.random.randint(lo, hi + 1) if hi > lo else np.random.randint(cx + center_margin_px, cx + max_dx + 1)
+                    else:
+                        px = np.random.randint(cx + center_margin_px, cx + max_dx + 1)
+
+                # 与已有方柱间距检查 (Chebyshev 距离，对应方形)
+                too_close = False
+                for epy, epx in placed:
+                    if max(abs(py - epy), abs(px - epx)) < min_sep_px:
+                        too_close = True
+                        break
+                if not too_close:
+                    placed.append((py, px))
+                    x1 = max(0, px - hw_px)
+                    x2 = min(size_x, px + hw_px + 1)
+                    y1 = max(0, py - hw_px)
+                    y2 = min(size_y, py + hw_px + 1)
+                    terrain.height_field_raw[x1:x2, y1:y2] = wall_height_px
+                    break
+
+    # 终点信息存 cfg 供环境读取（终点 = 右端半圆圆心在 world 坐标系的 (X, Y)）
+    cfg.goal_center_x = float(terrain_len) / 2.0
+    cfg.goal_center_y = float(terrain_len) - corridor_width / 2.0 - end_margin
     cfg.goal_radius = corridor_width / 2.0
+
+    # 起点切线方向（供出生朝向），存 terrain 对象避免全局覆盖
+    # 通道沿 Y 轴，切线向量 (dX/dY, 1) = (tangent, 1)，从 X 轴夹角 = atan2(1, tangent)
+    corridor_len_m = float(terrain_len) - corridor_width - 2.0 * end_margin
+    tangent = amplitude * 2.0 * np.pi * num_cycles / corridor_len_m
+    terrain.spawn_angle = float(np.arctan2(1.0, tangent))
 
     return terrain
 

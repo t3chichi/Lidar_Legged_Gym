@@ -849,6 +849,10 @@ class LeggedRobot(BaseTask, LeggedRobotRewMixin):
             self.max_terrain_level = self.cfg.terrain.num_rows
             self.terrain_origins = torch.from_numpy(self.terrain.env_origins).to(self.device).to(torch.float)
             self.env_origins[:] = self.terrain_origins[self.terrain_levels, self.terrain_types]
+            if hasattr(self.terrain, "spawn_angles") and self.terrain.spawn_angles.any():
+                self._spawn_angles = torch.from_numpy(self.terrain.spawn_angles).to(self.device).to(torch.float)
+            else:
+                self._spawn_angles = None
         else:
             self.custom_origins = False
             self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
