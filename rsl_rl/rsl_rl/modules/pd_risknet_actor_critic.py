@@ -168,15 +168,10 @@ class PDRiskNetActorCritic(nn.Module):
         self.distribution = None
         Normal.set_default_validate_args(False)
 
-        self._cached_actor_latent = None
         self._cached_proximal_feature = None
         # self._critic_hidden_state = None
         self._warned_missing_prox_hidden = False
         self._warned_missing_dist_hidden = False
-        self.register_buffer("_prox_points_cache", torch.empty(0), persistent=False)
-        self.register_buffer("_dist_points_cache", torch.empty(0), persistent=False)
-        self.register_buffer("_prox_points_valid_len", torch.empty(0, dtype=torch.long), persistent=False)
-        self.register_buffer("_dist_points_valid_len", torch.empty(0, dtype=torch.long), persistent=False)
         self._sampling_plan_ready = False
         self.register_buffer("_proximal_indices", torch.empty(0, dtype=torch.long), persistent=False)
         self.register_buffer("_distal_sorted_indices", torch.empty(0, dtype=torch.long), persistent=False)
@@ -208,49 +203,18 @@ class PDRiskNetActorCritic(nn.Module):
     def reset(self, dones=None):
         self.proximal_memory_a.reset(dones)
         self.distal_memory_a.reset(dones)
-        if dones is None:
-            # self._critic_hidden_state = None
-            self._prox_points_cache = torch.empty(0, device=self._proximal_indices.device)
-            self._dist_points_cache = torch.empty(0, device=self._proximal_indices.device)
-            self._prox_points_valid_len = torch.empty(0, dtype=torch.long, device=self._proximal_indices.device)
-            self._dist_points_valid_len = torch.empty(0, dtype=torch.long, device=self._proximal_indices.device)
-        # elif self._critic_hidden_state is not None:
-            # self._critic_hidden_state[..., dones == 1, :] = 0.0
-        else:
-            if self._prox_points_valid_len.numel() > 0:
-                self._prox_points_valid_len[dones == 1] = 0
-            if self._dist_points_valid_len.numel() > 0:
-                self._dist_points_valid_len[dones == 1] = 0
-            if self._prox_points_cache.numel() > 0:
-                self._prox_points_cache[dones == 1] = 0.0
-            if self._dist_points_cache.numel() > 0:
-                self._dist_points_cache[dones == 1] = 0.0
     
     def get_hidden_states(self):
-    # 获取当前近端/远端记忆的隐藏状态（可能为 None）
         prox_hidden = self.proximal_memory_a.hidden_states
         dist_hidden = self.distal_memory_a.hidden_states
 
-        # 若两者均为 None，尝试从点云缓存推断 batch_size 并构造零张量
         if prox_hidden is None and dist_hidden is None:
-            if self._prox_points_cache.numel() > 0:
-                batch_size = self._prox_points_cache.shape[0]
-                device = self._proximal_indices.device
-            else:
-                # 极端情况：无法推断 batch_size，返回全 None（框架会跳过存储）
-                return (None, None)
-            prox_hidden = torch.zeros((1, batch_size, self.proximal_feature_dim), device=device)
-            dist_hidden = torch.zeros((1, batch_size, self.distal_feature_dim), device=device)
-        else:
-            # 若其中一个为 None，则用另一个的 batch/device 补全
-            if prox_hidden is None:
-                batch_size = dist_hidden.shape[1]
-                device = dist_hidden.device
-                prox_hidden = torch.zeros((1, batch_size, self.proximal_feature_dim), device=device)
-            elif dist_hidden is None:
-                batch_size = prox_hidden.shape[1]
-                device = prox_hidden.device
-                dist_hidden = torch.zeros((1, batch_size, self.distal_feature_dim), device=device)
+            return (None, None)
+        # 若其中一个为 None，则用另一个的 batch/device 补全
+        if prox_hidden is None:
+            prox_hidden = torch.zeros((1, dist_hidden.shape[1], self.proximal_feature_dim), device=dist_hidden.device)
+        elif dist_hidden is None:
+            dist_hidden = torch.zeros((1, prox_hidden.shape[1], self.distal_feature_dim), device=prox_hidden.device)
 
         actor_hidden_states = (prox_hidden, dist_hidden)
 
@@ -474,29 +438,6 @@ class PDRiskNetActorCritic(nn.Module):
         counts = self._distal_bin_counts.to(lidar_hist.device).clamp(min=1.0).view(1, 1, k, 1)
         return out / counts
 
-    def _ensure_processed_point_cache(self, batch_size: int, device: torch.device, dtype: torch.dtype):
-        if (
-            self._prox_points_cache.numel() == 0
-            or self._prox_points_cache.shape[0] != batch_size
-            or self._prox_points_cache.device != device
-            or self._prox_points_cache.dtype != dtype
-        ):
-            self._prox_points_cache = torch.zeros(
-                (batch_size, self.proximal_history_length, self.proximal_points, 3), device=device, dtype=dtype
-            )
-            self._prox_points_valid_len = torch.zeros((batch_size,), device=device, dtype=torch.long)
-
-        if (
-            self._dist_points_cache.numel() == 0
-            or self._dist_points_cache.shape[0] != batch_size
-            or self._dist_points_cache.device != device
-            or self._dist_points_cache.dtype != dtype
-        ):
-            self._dist_points_cache = torch.zeros(
-                (batch_size, self.distal_history_length, self.distal_points, 3), device=device, dtype=dtype
-            )
-            self._dist_points_valid_len = torch.zeros((batch_size,), device=device, dtype=torch.long)
-
     def _compute_sampled_sorted_points_frame(self, lidar_points_frame: torch.Tensor):
         if lidar_points_frame.dim() != 3:
             raise ValueError(f"Expected lidar_points_frame shape (B, N, 3), got rank {lidar_points_frame.dim()}")
@@ -514,50 +455,6 @@ class PDRiskNetActorCritic(nn.Module):
         dist_points = self._sort_by_spherical(dist_points.unsqueeze(1)).squeeze(1)
         return prox_points, dist_points
 
-    def _roll_points_cache_with_frame(
-        self,
-        cache: torch.Tensor,
-        valid_len: torch.Tensor,
-        frame_points: torch.Tensor,
-        valid_mask: torch.Tensor,
-    ):
-        if cache.dim() != 4:
-            raise ValueError(f"Expected cache rank 4, got {cache.dim()}")
-        if frame_points.dim() != 3:
-            raise ValueError(f"Expected frame_points rank 3, got {frame_points.dim()}")
-
-        reset_mask = valid_mask & (valid_len == 0)
-        continue_mask = valid_mask & (valid_len > 0)
-        invalid_mask = ~valid_mask
-
-        if torch.any(reset_mask):
-            reset_points = frame_points[reset_mask].unsqueeze(1).repeat(1, cache.shape[1], 1, 1)
-            cache[reset_mask] = reset_points
-            valid_len[reset_mask] = 1
-
-        if torch.any(continue_mask):
-            rolled = torch.roll(cache[continue_mask], shifts=-1, dims=1)
-            rolled[:, -1] = frame_points[continue_mask]
-            cache[continue_mask] = rolled
-            valid_len[continue_mask] = torch.clamp(valid_len[continue_mask] + 1, max=cache.shape[1])
-
-        if torch.any(invalid_mask):
-            cache[invalid_mask] = 0.0
-            valid_len[invalid_mask] = 0
-
-    def _build_online_points_windows(self, lidar_points_frame: torch.Tensor):
-        batch_size = lidar_points_frame.shape[0]
-        self._ensure_processed_point_cache(batch_size, lidar_points_frame.device, lidar_points_frame.dtype)
-
-        prox_frame_points, dist_frame_points = self._compute_sampled_sorted_points_frame(lidar_points_frame)
-        valid_mask = torch.ones((batch_size,), dtype=torch.bool, device=lidar_points_frame.device)
-        self._roll_points_cache_with_frame(
-            self._prox_points_cache, self._prox_points_valid_len, prox_frame_points, valid_mask
-        )
-        self._roll_points_cache_with_frame(
-            self._dist_points_cache, self._dist_points_valid_len, dist_frame_points, valid_mask
-        )
-        return self._prox_points_cache, self._dist_points_cache
 
     def _build_replay_frame_features(self, lidar_points_seq: torch.Tensor, masks: torch.Tensor | None):
         if lidar_points_seq.dim() != 4:
@@ -729,7 +626,6 @@ class PDRiskNetActorCritic(nn.Module):
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
 
-        self._cached_actor_latent = actor_latent
         self._cached_proximal_feature = prox_feat
         return actor_latent
 
