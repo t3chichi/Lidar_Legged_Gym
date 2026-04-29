@@ -57,7 +57,10 @@ def play(args):
     policy = ppo_runner.get_inference_policy(device=env.device)
     
     # export policy as a jit module (used to run it from C++)
-    if EXPORT_POLICY:
+    if args.export:
+        # Warm-up: trigger _build_sampling_plan before export.
+        with torch.no_grad():
+            ppo_runner.alg.policy.act_inference(obs)
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
         export_policy_as_jit(ppo_runner.alg.policy, path)
         print('Exported policy as jit script to: ', path)
@@ -114,7 +117,6 @@ def play(args):
                 logger.print_rewards()
 
 if __name__ == '__main__':
-    EXPORT_POLICY = True
     RECORD_FRAMES = False
     MOVE_CAMERA = False
     ENABLE_LOGGING = False
