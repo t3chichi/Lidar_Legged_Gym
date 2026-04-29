@@ -82,11 +82,12 @@ class Terrain:
 
     def randomized_terrain(self, difficulty_scale=1.0):
         for k in range(self.cfg.num_sub_terrains):
-            # Env coordinates in the world
             (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.cfg.num_cols))
 
             choice = np.random.uniform(0, 1)
             difficulty = np.random.choice([0.5, 0.75, 0.9]) * difficulty_scale
+            if getattr(self.cfg, "alternate_sign", False):
+                self.cfg._sign_parity = (i + j) % 2
             terrain = self.make_terrain(choice, difficulty)
             self.add_terrain_to_map(terrain, i, j)
 
@@ -96,6 +97,8 @@ class Terrain:
                 difficulty = i / self.cfg.num_rows * difficulty_scale
                 choice = j / self.cfg.num_cols + 0.001
 
+                if getattr(self.cfg, "alternate_sign", False):
+                    self.cfg._sign_parity = (i + j) % 2
                 terrain = self.make_terrain(choice, difficulty)
                 self.add_terrain_to_map(terrain, i, j)
 
@@ -334,7 +337,10 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     terrain_len = float(getattr(cfg, "terrain_length", 12.0))
     end_margin = float(getattr(cfg, "end_margin", 0.5))
 
-    if getattr(cfg, "randomize_sign", False) and np.random.rand() > 0.5:
+    if getattr(cfg, "alternate_sign", False):
+        if getattr(cfg, "_sign_parity", 0) == 1:
+            amplitude = -amplitude
+    elif getattr(cfg, "randomize_sign", False) and np.random.rand() > 0.5:
         amplitude = -amplitude
 
     hs = terrain.horizontal_scale
