@@ -25,11 +25,15 @@ class Go2LidarPDRiskNet(Go2):
         super()._init_buffers()
         # Enable per-step debug drawing for this task when viewer is available.
         self.debug_viz = True
-        # Body indices for obstacle collision penalty (base + Head_upper).
+        # Body indices for obstacle collision penalty.
         self.collision_body_indices = [
             self.gym.find_actor_rigid_body_handle(
                 self.envs[0], self.actor_handles[0], name)
-            for name in ("base", "Head_upper")
+            for name in (
+                "base", "Head_upper",
+                "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh",
+                "FL_calf",  "FR_calf",  "RL_calf",  "RR_calf",
+            )
         ]
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
@@ -353,18 +357,40 @@ class Go2LidarPDRiskNet(Go2):
         return reached.float() * pd_cfg.goal_reward
 
     def _reset_root_states(self, env_ids):
-        super()._reset_root_states(env_ids)
+        if self.custom_origins:
+            self.root_states[env_ids] = self.base_init_state
+            self.root_states[env_ids, :3] += self.env_origins[env_ids]
+            spawn_range = float(getattr(self.cfg.init_state, "spawn_offset_range", 0.5))
+            self.root_states[env_ids, :2] += torch_rand_float(-spawn_range, spawn_range, (len(env_ids), 2), device=self.device)
+        else:
+            self.root_states[env_ids] = self.base_init_state
+            self.root_states[env_ids, :3] += self.env_origins[env_ids]
+
+        # 随机初始速度
+        self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device)
+
+        # 随机初始朝向：切线方向 ± config 范围
         if self._spawn_angles is not None:
             base = self._spawn_angles[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
-            r0 = self.cfg.init_state.rot_randomization_range[0]
-            r1 = self.cfg.init_state.rot_randomization_range[1]
+            r0, r1 = self.cfg.init_state.rot_randomization_range
             rand_yaw = base + torch_rand_float(r0, r1, (len(env_ids), 1), device=self.device).squeeze(1)
-            axis = torch.tensor([0, 0, 1], dtype=torch.float, device=self.device)
-            self.root_states[env_ids, 3:7] = quat_from_angle_axis(rand_yaw, axis)
+        elif self.cfg.init_state.randomize_rot:
+            r0, r1 = self.cfg.init_state.rot_randomization_range
+            rand_yaw = torch_rand_float(r0, r1, (len(env_ids), 1), device=self.device).squeeze(1)
+        else:
+            self.root_states[env_ids, 3:7] = torch.tensor(self.cfg.init_state.rot, device=self.device)
             env_ids_int32 = env_ids.to(dtype=torch.int32)
             self.gym.set_actor_root_state_tensor_indexed(
                 self.sim, gymtorch.unwrap_tensor(self.root_states),
                 gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+            return
+
+        axis = torch.tensor([0, 0, 1], dtype=torch.float, device=self.device)
+        self.root_states[env_ids, 3:7] = quat_from_angle_axis(rand_yaw, axis)
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim, gymtorch.unwrap_tensor(self.root_states),
+            gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _update_terrain_curriculum(self, env_ids):
         """Override: use a fixed move_down threshold decoupled from episode_length_s.
@@ -410,15 +436,12 @@ class Go2LidarPDRiskNet(Go2):
         clipped = torch.clamp(self.raycast_distances, max=d_max)
         return torch.mean(clipped / d_max, dim=1)
 
-    def _reward_base_collision(self):
+    def _reward_collision(self):
         forces = torch.stack([
             torch.norm(self.contact_forces[:, idx, :], dim=1)
             for idx in self.collision_body_indices
-        ], dim=1)  # (num_envs, num_bodies)
-        max_force = forces.max(dim=1).values
-        return torch.clamp(
-            max_force / self.cfg.rewards.base_collision_max_force,
-            min=0.0, max=1.0)
+        ], dim=1)
+        return (forces > 0.1).any(dim=1).float()
 
     def _reward_action_rate2(self):
         if not hasattr(self, "last_last_actions"):

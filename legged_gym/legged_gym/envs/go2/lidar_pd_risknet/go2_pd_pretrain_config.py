@@ -8,12 +8,18 @@ PD_SPHERICAL_AZIMUTH = 24
 PD_SPHERICAL_ELEVATION = 18
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
-PD_PROXIMAL_POINTS = 350
-PD_DISTAL_POINTS = 75
+PD_PROXIMAL_POINTS = 192
+PD_DISTAL_POINTS = 56
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
-PD_PRIV_HEIGHT_DIM = 187
+# Height measurement grid: auto-generated from range + count via linspace.
+# Counts must match the main risknet config (17×11=187) for weight transfer.
+MEASURED_GRID_X_COUNT = 17
+MEASURED_GRID_Y_COUNT = 11
+MEASURED_GRID_X_RANGE = [-0.3, 1.8]
+MEASURED_GRID_Y_RANGE = [-0.8, 0.8]
+PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
@@ -33,8 +39,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 24
         avoid_distance_thresh = 1.6
-        avoid_alpha = 1.8
-        avoid_beta = 1.2
+        avoid_alpha = 2.0
+        avoid_beta = 1.1
         ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -60,8 +66,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # True flat terrain for gait pretraining.
         mesh_type = 'plane'
         measure_heights = True
-        measured_points_x = [-2.8, -2.45, -2.1, -1.75, -1.4, -1.05, -0.7, -0.35, 0.0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.45, 2.8,]
-        measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
+        # Grid auto-generated from range + count via linspace in _init_height_points.
+        measured_grid_x_range = MEASURED_GRID_X_RANGE
+        measured_grid_y_range = MEASURED_GRID_Y_RANGE
+        measured_grid_x_count = MEASURED_GRID_X_COUNT
+        measured_grid_y_count = MEASURED_GRID_Y_COUNT
         curriculum = False
 
     class asset(Go2RoughCfg.asset):
@@ -199,4 +208,4 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         num_steps_per_env = 24
         experiment_name = "go2_pd_pretrain"
         run_name = ""
-        max_iterations = 300
+        max_iterations = 600

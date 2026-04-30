@@ -13,14 +13,19 @@ PD_DISTAL_POINTS = 256
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
-PD_PRIV_HEIGHT_DIM = 187
+MEASURED_GRID_X_COUNT = 17
+MEASURED_GRID_Y_COUNT = 11
+MEASURED_GRID_X_RANGE = [-1.0, 4.6]
+MEASURED_GRID_Y_RANGE = [-1.8, 1.8]
+PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
-        rot_randomization_range = [-3.1415, 3.1415]   # 绕 z 轴旋转范围（弧度），即 ±π
+        rot_randomization_range = [-0.5236, 0.5236]   # 相对切线方向的偏航随机范围 (rad)
+        spawn_offset_range = 0.3                       # 出生点 XY 随机偏移范围 (m)
 
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
@@ -46,7 +51,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 5.0
+        split_theta_deg = 20.0
 
         n_sectors = 36
         avoid_distance_thresh = 1.5
@@ -60,6 +65,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
         avoid_speed_scale = 0.6
+
+        # 通道终点奖励
+        goal_enabled = True
+        goal_reward = 1.0
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
@@ -77,32 +86,36 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         horizontal_scale = 0.1
         # Keep heights enabled for privileged supervision channel.
         measure_heights = True
-        measured_points_x = [-1.0, -0.65, -0.3, 0.05, 0.4, 0.75, 1.1, 1.45, 1.8, 2.15, 2.5, 2.85, 3.2, 3.55, 3.9, 4.25, 4.6]
-        measured_points_y = [-1.8, -1.44, -1.08, -0.72, -0.36, 0.0, 0.36, 0.72, 1.08, 1.44, 1.8]
-        # Use obstacle-dense terrains for avoidance training without adding extra actors.
+        # Grid auto-generated from range + count via linspace in _init_height_points.
+        measured_grid_x_range = MEASURED_GRID_X_RANGE
+        measured_grid_y_range = MEASURED_GRID_Y_RANGE
+        measured_grid_x_count = MEASURED_GRID_X_COUNT
+        measured_grid_y_count = MEASURED_GRID_Y_COUNT
         mesh_type = 'trimesh'
         curriculum = True
 
         terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
-        # Random obstacle height per sub-terrain (meters): enables both shorter and taller obstacles.
-        terrain_length = 8.
-        terrain_width = 8.
-        num_rows = 6   
+        terrain_length = 12.
+        terrain_width = 12.
+        num_rows = 6
         num_cols = 4
 
-        # 四棱柱障碍物配置
-        pillar_count_min = 8          # 简单难度最少数量
-        pillar_count_max = 14         # 困难难度最多数量
-        pillar_size_x_min = 0.4      # 矩形 X 方向最小边长 (m)
-        pillar_size_x_max = 0.5     # 矩形 X 方向最大边长 (m)
-        pillar_size_y_min = 0.4      # 矩形 Y 方向最小边长 (m)
-        pillar_size_y_max = 0.5      # 矩形 Y 方向最大边长 (m)
-        pillar_height_min = 0.35      # 最小高度 (m)
-        pillar_height_max = 0.80      # 最大高度 (m)
-        pillar_min_separation = 1.6   # 柱心最小间距 (m)
-        pillar_center_clear_radius = 1.3  # 出生点净空半径 (m)
-        pillar_spawn_radius = 4.     # 障碍物最大生成半径 (m)
-        pillar_allow_height_variation = True
+        # 弯曲通道地形配置
+        corridor_width = 3.0       # 通道宽度 (m)
+        wall_height = 0.8          # 墙壁高度 (m)
+        wall_thickness = 0.4       # 墙壁厚度 (m)
+        amplitude = 1.5            # 正弦波振幅 (m)
+        num_cycles = 1.5           # 正弦波周期数
+        alternate_sign = True      # 按地块索引交替反转振幅符号
+        end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
+
+        # 通道内随机方柱
+        pillar_count = 3           # 每通道柱子数量
+        pillar_half_width = 0.15   # 柱子半宽 (m), 全宽=0.3m
+        pillar_min_separation = 1.0  # 柱子间最小净距 (m)
+        pillar_wall_margin = 0.5   # 柱子与墙最小净距 (m)
+        pillar_centerline_margin = 0.3  # 柱子与中心线最小距离 (m)
+        pillar_margin_end = 1.5    # 柱子距两端半圆圆心最小距离 (m)
 
     class commands(Go2RoughCfg.commands):
         heading_command = False
@@ -124,12 +137,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         class scales:
             # Paper main rewards.
             vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
+            goal = 1.0  # 通道终点到达奖励
             rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
             # Auxiliary rewards from appendix Table 5.
             lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
             feet_stumble = -2.0e-2  # 惩罚脚部绊碰（足端受到异常横向冲击）
-            collision = -2.0e-2  # 惩罚机体/连杆非期望碰撞
+            collision = -1.0  # 二元碰撞惩罚：任一检测部位 >0.1N → 全罚
             dof_pos_limits = -0.2  # 惩罚关节接近或超过位置限位
             torques = -1.0e-6  # 惩罚关节力矩过大，降低能耗和电机负担
             dof_vel = -1.0e-6  # 惩罚关节速度过大，抑制过激动作
@@ -140,7 +154,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
             feet_air_time = 1.0
-            base_height = -0.27
+            base_height = -0.3
 
             # Overrides
             lin_vel_z = -3.3e-4
