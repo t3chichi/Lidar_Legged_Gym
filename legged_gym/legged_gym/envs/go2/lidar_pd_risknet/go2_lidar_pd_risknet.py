@@ -37,6 +37,8 @@ class Go2LidarPDRiskNet(Go2):
         ]
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
+        if not hasattr(self, '_spawn_angles'):
+            self._spawn_angles = None
 
     def _get_noise_scale_vec(self, cfg):
         """Use Go2 proprio noise only; keep LiDAR history channels noise-free by default.

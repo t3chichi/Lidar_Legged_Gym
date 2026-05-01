@@ -13,6 +13,7 @@ PD_DISTAL_POINTS = 56
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
+PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 # Counts must match the main risknet config (17×11=187) for weight transfer.
 MEASURED_GRID_X_COUNT = 17
@@ -35,11 +36,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 22.0
+        split_theta_deg = PD_THETA_DEG
 
         n_sectors = 24
         avoid_distance_thresh = 1.6
-        avoid_alpha = 2.0
+        avoid_alpha = 1.6
         avoid_beta = 1.1
         ray_max_distance = 10.0
 
@@ -135,7 +136,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             stand_still = -0.
 
             # Overrides
-            orientation = -5.0 
+            orientation = -5.0
             torques = -0.000025
             feet_air_time = 1.0
             # feet_contact_forces = -0.01
@@ -155,9 +156,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
-        lidar_point_mask_ratio = 0.10
-        lidar_point_mask_value_range = [0.0, 0.3]
-        lidar_distance_noise_ratio = 0.10
+        lidar_point_mask_ratio = 0.05
+        lidar_point_mask_value_range = [2.0, 10.0]
+        lidar_distance_noise_ratio = 0.02
 
         # Remaining parameters are declared for parity and can be consumed by future hooks.
         payload_mass_range = [-1.0, 3.0]
@@ -180,7 +181,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         num_lidar_points = PD_NUM_LIDAR_POINTS
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
-        split_theta_deg = 5.0
+        split_theta_deg = PD_THETA_DEG
         proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM
         distal_feature_dim = PD_DISTAL_FEATURE_DIM
         proprio_obs_dim = PD_PROPRIO_DIM

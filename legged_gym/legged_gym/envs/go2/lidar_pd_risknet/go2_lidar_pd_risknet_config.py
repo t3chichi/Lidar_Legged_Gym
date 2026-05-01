@@ -26,7 +26,7 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
-        rot_randomization_range = [-0.4, 0.4]   # 相对切线方向的偏航随机范围 (rad)
+        rot_randomization_range = [-0.35, 0.35]   # 相对切线方向的偏航随机范围 (rad)
         spawn_offset_range = 0.2                 # 出生点 XY 随机偏移范围 (m)
 
     class pd_risknet:
