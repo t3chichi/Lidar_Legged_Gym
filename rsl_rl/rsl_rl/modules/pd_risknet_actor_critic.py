@@ -149,10 +149,10 @@ class PDRiskNetActorCritic(nn.Module):
         )
 
         actor_input_dim = self.proprio_obs_dim + self.proximal_feature_dim + self.distal_feature_dim
-        critic_input_dim = actor_input_dim if num_critic_obs != self.privileged_critic_dim else self.privileged_critic_dim
 
         self.actor = self._build_mlp(actor_input_dim, actor_hidden_dims, num_actions, act_fn)
-        self.critic = self._build_mlp(critic_input_dim, critic_hidden_dims, 1, act_fn)
+        # Critic 与 Actor 共享同一个 299 维感知表征
+        self.critic = self._build_mlp(actor_input_dim, critic_hidden_dims, 1, act_fn)
 
         # Train-time proximal branch supervision head.
         self.height_supervisor = nn.Linear(self.proximal_feature_dim, self.privileged_height_dim)
@@ -169,6 +169,7 @@ class PDRiskNetActorCritic(nn.Module):
         Normal.set_default_validate_args(False)
 
         self._cached_proximal_feature = None
+        self._cached_actor_latent = None
         # self._critic_hidden_state = None
         self._warned_missing_prox_hidden = False
         self._warned_missing_dist_hidden = False
@@ -203,6 +204,7 @@ class PDRiskNetActorCritic(nn.Module):
     def reset(self, dones=None):
         self.proximal_memory_a.reset(dones)
         self.distal_memory_a.reset(dones)
+        self._cached_actor_latent = None
     
     def get_hidden_states(self):
         prox_hidden = self.proximal_memory_a.hidden_states
@@ -217,10 +219,7 @@ class PDRiskNetActorCritic(nn.Module):
             dist_hidden = torch.zeros((1, prox_hidden.shape[1], self.distal_feature_dim), device=prox_hidden.device)
 
         actor_hidden_states = (prox_hidden, dist_hidden)
-
-        # Critic 无需隐藏状态，但框架期望非空元组，返回与 Actor 第一隐藏状态同形状的零张量
-        dummy_critic = torch.zeros_like(prox_hidden)
-        critic_hidden_states = (dummy_critic, dummy_critic)
+        critic_hidden_states = (prox_hidden, dist_hidden)
 
         return actor_hidden_states, critic_hidden_states
 
@@ -627,6 +626,7 @@ class PDRiskNetActorCritic(nn.Module):
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
 
         self._cached_proximal_feature = prox_feat
+        self._cached_actor_latent = actor_latent
         return actor_latent
 
     def update_distribution(self, observations, masks=None, hidden_states=None):
@@ -653,33 +653,41 @@ class PDRiskNetActorCritic(nn.Module):
         return self.actor(actor_latent)
 
     def evaluate(self, critic_observations, masks=None, hidden_states=None, **kwargs):
-        if critic_observations.shape[-1] == self.privileged_critic_dim:
-            # if masks is None:
-            #     if critic_observations.dim() == 2:
-            #         self._ensure_critic_hidden_state(
-            #             critic_observations.shape[0], critic_observations.device, critic_observations.dtype
-            #         )
-            #     elif critic_observations.dim() == 3:
-            #         self._ensure_critic_hidden_state(
-            #             critic_observations.shape[1], critic_observations.device, critic_observations.dtype
-            #         )
-            # elif critic_observations.dim() == 3:
-            #     critic_observations = unpad_trajectories(critic_observations, masks).squeeze(0)
-            # return self.critic(critic_observations)
-            # Privileged observation: direct feed-forward.
-            if masks is not None and critic_observations.dim() == 3:
-                critic_observations = unpad_trajectories(critic_observations, masks).squeeze(0)
-            return self.critic(critic_observations)
+        if masks is not None:
+            # 训练路径：从存储的 Actor 观测重建感知表征
+            actor_latent = self._build_actor_latent(
+                critic_observations, masks=masks, hidden_states=hidden_states
+            )
+            return self.critic(actor_latent)
+        else:
+            if self._cached_actor_latent is not None:
+                return self.critic(self._cached_actor_latent)
+            # compute_returns 冷启动：空间编码 + 只读 GRU（不推进内部隐藏状态，
+            # 避免下一轮 rollout 的 act() 对同一观测重复处理导致时间偏移）
+            proprio, prox_frame_feat, dist_frame_feat = self._encode_perception(critic_observations, masks=None)
+            if self.proximal_memory_a.hidden_states is not None:
+                prox_out, _ = self.proximal_memory_a.rnn(prox_frame_feat, self.proximal_memory_a.hidden_states)
+                prox_feat = prox_out[-1]
+            else:
+                prox_feat = prox_frame_feat[-1]
+            if self.distal_memory_a.hidden_states is not None:
+                dist_out, _ = self.distal_memory_a.rnn(dist_frame_feat, self.distal_memory_a.hidden_states)
+                dist_feat = dist_out[-1]
+            else:
+                dist_feat = dist_frame_feat[-1]
+            return self.critic(torch.cat((proprio, prox_feat, dist_feat), dim=-1))
 
-        actor_latent = self._build_actor_latent(critic_observations, masks=masks, hidden_states=hidden_states)
-        return self.critic(actor_latent)
-
-    def get_auxiliary_loss(self, privileged_heights: torch.Tensor) -> torch.Tensor:
+    def get_auxiliary_loss(self, privileged_heights: torch.Tensor, masks: torch.Tensor | None = None) -> torch.Tensor:
         if self._cached_proximal_feature is None:
             return torch.zeros((), device=privileged_heights.device)
-        
+
         if self._cached_proximal_feature.numel() == 0:
             return torch.zeros((), device=privileged_heights.device)
+
+        # 统一 unpad：训练时 _cached_proximal_feature 已被 _build_actor_latent unpad（保持 3D）
+        if masks is not None and privileged_heights.dim() == 3:
+            privileged_heights = unpad_trajectories(privileged_heights, masks)
+
         # 取序列最后一个时间步的特征进行监督（如果是训练分支的话），或者直接使用当前特征（如果是推理分支的话）
         if self._cached_proximal_feature.dim() == 3:
             # shape: [batch, seq_len, feat_dim] -> 取最后一步
@@ -718,5 +726,15 @@ class PDRiskNetActorCritic(nn.Module):
         return self.privileged_supervision_coef * torch.mean(torch.square(pred - height_target))
 
     def load_state_dict(self, state_dict, strict=True):
-        super().load_state_dict(state_dict, strict=strict)
-        return True
+        # 兼容旧 checkpoint：critic 第一层权重形状从 [*, 235] 变为 [*, 299]
+        if 'critic.0.weight' in state_dict:
+            expected = self.critic[0].weight.shape
+            actual = state_dict['critic.0.weight'].shape
+            if expected != actual:
+                print(f"[PDRiskNetActorCritic] Critic weight shape mismatch "
+                      f"(checkpoint {list(actual)} -> model {list(expected)}). "
+                      f"Critic will be randomly initialized.")
+                keys_to_remove = [k for k in state_dict if k.startswith('critic.')]
+                for k in keys_to_remove:
+                    del state_dict[k]
+        return super().load_state_dict(state_dict, strict=False)

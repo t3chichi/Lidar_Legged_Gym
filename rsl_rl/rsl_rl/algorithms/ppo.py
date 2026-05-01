@@ -283,7 +283,7 @@ class PPO:
                 self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
                 actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
                 # -- critic
-                value_batch = self.policy.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                value_batch = self.policy.evaluate(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
                 # -- entropy
                 # we only keep the entropy of the first augmentation (the original one)
                 mu_batch = self.policy.action_mean[:original_batch_size]
@@ -361,7 +361,7 @@ class PPO:
 
                 # Optional train-time privileged supervision (e.g., PD-RiskNet proximal branch).
                 if mean_auxiliary_loss is not None:
-                    auxiliary_loss = self.policy.get_auxiliary_loss(critic_obs_batch)
+                    auxiliary_loss = self.policy.get_auxiliary_loss(critic_obs_batch, masks=masks_batch)
                     loss = loss + auxiliary_loss
                 else:
                     auxiliary_loss = None

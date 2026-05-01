@@ -452,8 +452,8 @@ class OnPolicyRunner:
                 # Compute returns for RL training
                 if hasattr(self, 'training_type') and self.training_type == "rl":
                     # Clone the privileged_obs to get a normal tensor that can be used in autograd
-                    privileged_obs_for_returns = privileged_obs.clone()
-                    self.alg.compute_returns(privileged_obs_for_returns)
+                    obs_for_returns = obs.clone()
+                    self.alg.compute_returns(obs_for_returns)
 
             # Update policy
             loss_dict = self.alg.update()
