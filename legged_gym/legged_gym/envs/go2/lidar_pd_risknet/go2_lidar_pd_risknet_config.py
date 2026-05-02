@@ -140,24 +140,23 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             # Auxiliary rewards from appendix Table 5.
             lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
             feet_stumble = -2.0e-2  # 惩罚脚部绊碰（足端受到异常横向冲击）
-            collision = -0.5  # 二元碰撞惩罚：任一检测部位 >0.1N → 全罚
-            dof_pos_limits = -0.2  # 惩罚关节接近或超过位置限位
+            collision = -2.0e-2  # 连续 ||Force_xy||²（对齐论文 “连杆碰撞”）
+            dof_pos_limits = -0.2  # 二值越界指示（对齐论文 1_{q>q_max or q<q_min}）
             torques = -1.0e-6  # 惩罚关节力矩过大，降低能耗和电机负担
             dof_vel = -1.0e-6  # 惩罚关节速度过大，抑制过激动作
             dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
-            action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
+            action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
-            feet_air_time = 1.0
-            base_height = -0.32
-            gait_2_step = -5.0  # 隐式对角步态惩罚：强制 trot 步态（对角腿同步，同侧腿异步）
-            ang_vel_xy = -5.0e-3  # 惩罚 x/y 方向角速度，鼓励水平面稳定朝向控制
-            goal = 5.0  # 通道终点到达奖励
+            # 显式禁用论文外的继承奖励（注释掉不会覆盖父类，必须显式设 0）
+            tracking_lin_vel = 0.   # vel_avoid 已包含速度跟踪
+            tracking_ang_vel = 0.   # vel_avoid 已包含速度跟踪
+            feet_air_time = 0.      # 论文不使用
+            base_height = 0.        # 论文不使用
+            gait_2_step = 0.        # 论文不使用（-5.0 强制 trot 步态是跪行主因）
+            ang_vel_xy = 0.         # 论文不使用
 
-            # Overrides
-            lin_vel_z = -3.7e-4
+            goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             
 
     class normalization(Go2RoughCfg.normalization):

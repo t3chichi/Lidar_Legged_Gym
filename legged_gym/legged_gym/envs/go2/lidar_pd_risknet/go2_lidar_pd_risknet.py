@@ -438,12 +438,28 @@ class Go2LidarPDRiskNet(Go2):
         clipped = torch.clamp(self.raycast_distances, max=d_max)
         return torch.mean(clipped / d_max, dim=1)
 
+    # --- 对齐论文 Table 5 的奖励机制覆盖 ---
+
     def _reward_collision(self):
-        forces = torch.stack([
-            torch.norm(self.contact_forces[:, idx, :], dim=1)
+        """ 论文公式：||Force_xy||² × -0.02（连续平方水平力，替代二值阈值）"""
+        forces_xy = torch.stack([
+            torch.norm(self.contact_forces[:, idx, :2], dim=1)
             for idx in self.collision_body_indices
         ], dim=1)
-        return (forces > 0.1).any(dim=1).float()
+        return torch.sum(torch.square(forces_xy), dim=1)
+
+    def _reward_feet_stumble(self):
+        """ 论文公式：||Force_xy||² × -0.02（连续平方力，仅在磕绊状态下触发）"""
+        forces_xy = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
+        forces_z = torch.abs(self.contact_forces[:, self.feet_indices, 2])
+        stumbling = forces_xy > 5.0 * forces_z
+        return torch.sum(torch.square(forces_xy) * stumbling.float(), dim=1)
+
+    def _reward_dof_pos_limits(self):
+        """ 论文公式：1_{q>qmax or q<qmin} × -0.2（二值越界指示，替代距离比例）"""
+        out_of_limits = (self.dof_pos < self.dof_pos_limits[:, 0]).float()
+        out_of_limits += (self.dof_pos > self.dof_pos_limits[:, 1]).float()
+        return torch.sum(out_of_limits, dim=1)
 
     def _reward_action_rate2(self):
         if not hasattr(self, "last_last_actions"):
