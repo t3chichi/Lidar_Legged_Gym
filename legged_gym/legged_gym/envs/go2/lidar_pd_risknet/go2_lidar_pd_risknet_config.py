@@ -39,9 +39,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         split_theta_deg = PD_THETA_DEG
 
         n_sectors = 24
-        avoid_distance_thresh = 1.6
+        avoid_distance_thresh = 1.2
         avoid_alpha = 1.6
-        avoid_beta = 1.1
+        avoid_beta = 1.0
         ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -166,13 +166,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.5, 1.5]
+        friction_range = [0.5, 1.2]
         randomize_base_mass = True
         added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
         lidar_point_mask_ratio = 0.05
-        lidar_point_mask_value_range = [2.0, 10.0]
+        lidar_point_mask_value_range = [0, 0.3]
         lidar_distance_noise_ratio = 0.02
 
         # Remaining parameters are declared for parity and can be consumed by future hooks.
