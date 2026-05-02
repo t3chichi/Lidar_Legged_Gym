@@ -418,6 +418,14 @@ class Go2LidarPDRiskNet(Go2):
             torch.clip(self.terrain_levels[env_ids], 0))
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
 
+    def update_command_curriculum(self, env_ids):
+        """Override: use vel_avoid instead of tracking_lin_vel for curriculum check."""
+        if torch.mean(self.episode_sums["vel_avoid"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["vel_avoid"]:
+            self.command_ranges["lin_vel_x"][0] = np.clip(
+                self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
+            self.command_ranges["lin_vel_x"][1] = np.clip(
+                self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
+
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
         if len(env_ids) == 0:
