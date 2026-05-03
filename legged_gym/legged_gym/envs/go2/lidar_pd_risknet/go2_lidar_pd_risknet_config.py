@@ -26,7 +26,7 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
-        rot_randomization_range = [-0.35, 0.35]   # 相对切线方向的偏航随机范围 (rad)
+        rot_randomization_range = [-0.26, 0.26]   # 相对切线方向的偏航随机范围 (rad)
         spawn_offset_range = 0.2                 # 出生点 XY 随机偏移范围 (m)
 
     class pd_risknet:
@@ -40,7 +40,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 24
         avoid_distance_thresh = 1.2
-        avoid_alpha = 1.6
+        avoid_alpha = 1.2
         avoid_beta = 1.0
         ray_max_distance = 10.0
 
@@ -49,7 +49,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_speed_scale = 0.6
+        avoid_speed_scale = 0.45  # 避障速度 = 指令速度 × 比例系数
 
         # 通道终点奖励
         goal_enabled = True
@@ -171,7 +171,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
-        lidar_point_mask_ratio = 0.05
+        lidar_point_mask_ratio = 0.02
         lidar_point_mask_value_range = [0, 0.3]
         lidar_distance_noise_ratio = 0.02
 

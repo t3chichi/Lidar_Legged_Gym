@@ -78,6 +78,13 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self.avoid_distances = torch.full(
+            (self.num_envs, int(cfg.num_lidar_points)),
+            float(cfg.ray_max_distance),
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
         self.v_avoid = torch.zeros(
             self.num_envs, 
             2, 
@@ -207,8 +214,19 @@ class Go2LidarPDRiskNet(Go2):
         points_base = points_base + self._sensor_translation.unsqueeze(1)
         dist = lidar_dist.view(self.num_envs, -1)
         valid = dist > 0.0
+        max_dist = float(self.cfg.pd_risknet.ray_max_distance)
+        dist = torch.where(valid, dist, torch.full_like(dist, max_dist))
 
-        # LiDAR domain randomization from paper appendix.
+        # === 通路 A：避障用 — 仅地面滤除，不经过域随机化 ===
+        env_ids_per_point = torch.arange(self.num_envs, device=self.device).repeat_interleave(n_points)
+        quat_per_point = self.base_quat[env_ids_per_point]
+        clean_base_flat = points_base.clone().view(-1, 3)
+        clean_world_flat = quat_apply(quat_per_point, clean_base_flat) + self.base_pos[env_ids_per_point]
+        clean_world = clean_world_flat.view(self.num_envs, n_points, 3)
+        clean_is_ground = torch.abs(clean_world[..., 2]) < 0.05
+        self.avoid_distances.copy_(torch.where(clean_is_ground, torch.full_like(dist, max_dist), dist))
+
+        # === 通路 B：网络用 — 仅域随机化，保留真实地面几何 ===
         mask_ratio = float(getattr(self.cfg.domain_rand, "lidar_point_mask_ratio", 0.0))
         if mask_ratio > 0.0:
             rand_mask = torch.rand_like(dist) < mask_ratio
@@ -225,42 +243,8 @@ class Go2LidarPDRiskNet(Go2):
             points_base = points_base * scale.unsqueeze(-1)
             dist = dist * scale
 
-        # If a ray is invalid, keep max distance endpoint behavior.
-        dist = torch.where(valid, dist, torch.full_like(dist, float(self.cfg.pd_risknet.ray_max_distance)))
-
-        # --- 世界坐标系地面滤除 ---
-        # 1. 将点云展平为 [N_total, 3] 进行批量旋转
-        env_ids_per_point = torch.arange(self.num_envs, device=self.device).repeat_interleave(n_points)
-        quat_per_point = self.base_quat[env_ids_per_point]  # [N_total, 4]
-        points_base_flat = points_base.view(-1, 3)          # [N_total, 3]
-
-        # 2. 旋转到世界坐标系并加上基座位置
-        points_world_flat = quat_apply(quat_per_point, points_base_flat)
-        points_world_flat += self.base_pos[env_ids_per_point]
-
-        # 3. 恢复形状 [num_envs, num_points, 3]
-        points_world = points_world_flat.view(self.num_envs, n_points, 3)
-
-        # 4. 获取点的绝对高度（世界 Z 坐标）
-        world_z = points_world[..., 2]  # [num_envs, num_points]
-
-        # 5. 地面高度通常接近 0，用阈值判断
-        ground_threshold = 0.05  # 米，可根据地形起伏微调
-        is_ground = torch.abs(world_z) < ground_threshold
-
-        # 6. 将地面点的距离设为最大值，使其不参与后续避障计算
-        max_dist = float(self.cfg.pd_risknet.ray_max_distance)
-        dist = torch.where(is_ground, torch.full_like(dist, max_dist), dist)
-        
-        # print(f"is_ground ratio: {is_ground.float().mean().item():.4f}")
-
-        # --- 地面滤除结束 ---
-        
         self.lidar_points_base.copy_(points_base)
         self.raycast_distances.copy_(dist)
-        # Use roll to avoid overlapping in-place memory writes during history shift.
-        # self.lidar_history = torch.roll(self.lidar_history, shifts=-1, dims=1)
-        # self.lidar_history[:, -1].copy_(self.lidar_points_base)
 
     def _compute_v_avoid(self):
         cfg = self.cfg.pd_risknet
@@ -268,8 +252,8 @@ class Go2LidarPDRiskNet(Go2):
         sec_size = 2.0 * math.pi / n_sec
 
         pts = self.lidar_points_base[..., :2]
-        # dist = torch.linalg.norm(pts, dim=-1)
-        dist = self.raycast_distances     #使用已滤除地面的距离
+        # 使用仅经地面滤除、未经域随机化的干净距离
+        dist = self.avoid_distances
         angles = torch.atan2(pts[..., 1], pts[..., 0])
         sec_ids = torch.floor((angles + math.pi) / sec_size).long().clamp(min=0, max=n_sec - 1)
 
@@ -289,8 +273,8 @@ class Go2LidarPDRiskNet(Go2):
             # 该扇区内有效点数量
             valid_in_sec = (sec_mask & valid_mask).sum(dim=1)  # [num_envs]
 
-            # 取第5%分位数（至少第1个）
-            k_per_env = torch.clamp((valid_in_sec * 0.05).int(), min=1)  # [num_envs]
+            # 取第10%分位数（至少第1个）
+            k_per_env = torch.clamp((valid_in_sec * 0.10).int(), min=1)  # [num_envs]
 
             # 排序
             sorted_vals, _ = torch.sort(sec_vals, dim=1)  # [num_envs, num_points]
@@ -309,7 +293,8 @@ class Go2LidarPDRiskNet(Go2):
 
         active = min_dist_per_sec < float(cfg.avoid_distance_thresh)
         mag = torch.exp(-min_dist_per_sec * float(cfg.avoid_alpha)) * active.float()
-        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1) * float(cfg.avoid_speed_scale)
+        cmd_speed = torch.norm(self.commands[:, :2], dim=1).clamp(min=0.2)
+        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1) * (cmd_speed * float(cfg.avoid_speed_scale)).unsqueeze(-1)
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
