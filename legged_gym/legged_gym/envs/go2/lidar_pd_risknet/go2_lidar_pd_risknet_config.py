@@ -87,10 +87,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
           
 
         # 弯曲通道地形配置
-        corridor_width = 2.8       # 通道宽度 (m)
+        corridor_width = 3.0       # 通道宽度 (m)
         wall_height = 0.8          # 墙壁高度 (m)
         wall_thickness = 0.5       # 墙壁厚度 (m)
-        amplitude = 1.5            # 正弦波振幅 (m)
+        amplitude = 1.3            # 正弦波振幅 (m)
         num_cycles = 1.5           # 正弦波周期数
         alternate_sign = True      # 按地块索引交替反转振幅符号
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
@@ -101,7 +101,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         pillar_min_separation = 3  # 柱子间最小净距 (m)
         pillar_wall_margin = 0.8   # 柱子与墙最小净距 (m)
         pillar_centerline_margin = 0.0  # 柱子与中心线最小距离 (m)
-        pillar_margin_end = 2.5    # 柱子距两端半圆圆心最小距离 (m)
+        pillar_margin_end = 3.0    # 柱子距两端半圆圆心最小距离 (m)
 
     class commands(Go2RoughCfg.commands):
         heading_command = False
