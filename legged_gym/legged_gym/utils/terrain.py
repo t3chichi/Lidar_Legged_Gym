@@ -371,13 +371,24 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     center_x = mid_x + amplitude_px * np.sin(phase)
     dx = np.abs(x_coord - center_x)
 
-    # 两端半圆形封口：圆心 (y_start, mid_x) 和 (y_end, mid_x)，半径 = half_cw
-    dist_start = np.sqrt((y_coord - y_start) ** 2 + (x_coord - mid_x) ** 2)
+    # 终点半圆形封口
     dist_end = np.sqrt((y_coord - y_end) ** 2 + (x_coord - mid_x) ** 2)
+
+    # 起点切线直道 + 垂直封口
+    straight_len_m = float(getattr(cfg, "straight_length", 0.5))
+    straight_px = int(straight_len_m / hs)
+    tangent_slope = amplitude_px * 2.0 * np.pi * num_cycles / float(corridor_len_px)
+    sin_t = tangent_slope / np.sqrt(1.0 + tangent_slope**2)
+    cos_t = 1.0 / np.sqrt(1.0 + tangent_slope**2)
+    u = (x_coord.astype(np.float64) - mid_x) * sin_t + (y_coord.astype(np.float64) - y_start) * cos_t
+    v = -(x_coord.astype(np.float64) - mid_x) * cos_t + (y_coord.astype(np.float64) - y_start) * sin_t
+    # 底边 = 补齐短壁 + 延伸 straight_px
+    u_back = -np.float64(half_cw) * np.abs(sin_t) - np.float64(straight_px)
+    straight_area = (u >= u_back) & (y_coord < y_start) & (np.abs(v) <= np.float64(half_cw) * cos_t)
 
     in_corridor = (
         ((y_coord >= y_start) & (y_coord <= y_end) & (dx <= half_cw)) |
-        ((y_coord < y_start) & (dist_start <= half_cw)) |
+        straight_area |
         ((y_coord > y_end) & (dist_end <= half_cw))
     )
 
@@ -441,11 +452,8 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     cfg.goal_center_y = float(terrain_len) - corridor_width / 2.0 - end_margin
     cfg.goal_radius = corridor_width / 2.0
 
-    # 起点切线方向（供出生朝向），存 terrain 对象避免全局覆盖
-    # 通道沿 Y 轴，切线向量 (dX/dY, 1) = (tangent, 1)，从 X 轴夹角 = atan2(1, tangent)
-    corridor_len_m = float(terrain_len) - corridor_width - 2.0 * end_margin
-    tangent = amplitude * 2.0 * np.pi * num_cycles / corridor_len_m
-    terrain.spawn_angle = float(np.arctan2(1.0, tangent))
+    # 起点切线方向 = 矩形墙壁方向
+    terrain.spawn_angle = float(np.arctan2(1.0, tangent_slope))
 
     return terrain
 

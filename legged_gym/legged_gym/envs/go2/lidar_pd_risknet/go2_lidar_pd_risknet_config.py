@@ -90,7 +90,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         corridor_width = 3.0       # 通道宽度 (m)
         wall_height = 0.8          # 墙壁高度 (m)
         wall_thickness = 0.5       # 墙壁厚度 (m)
-        amplitude = 1.3            # 正弦波振幅 (m)
+        amplitude = 1.2            # 正弦波振幅 (m)
         num_cycles = 1.5           # 正弦波周期数
         alternate_sign = True      # 按地块索引交替反转振幅符号
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
