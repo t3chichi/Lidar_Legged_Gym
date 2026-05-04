@@ -370,7 +370,8 @@ class PDRiskNetActorCritic(nn.Module):
 
     def _build_sampling_plan(self, lidar_hist: torch.Tensor):
         # Build once from a representative scan: keeps runtime overhead low.
-        ref_points = lidar_hist[0, -1]
+        ref_idx = torch.randint(0, lidar_hist.shape[0], (1,), device=lidar_hist.device).item()
+        ref_points = lidar_hist[ref_idx, -1]
 
         # Rotate base-frame points back to sensor frame for correct
         # proximal/distal split.  The sensor may be mounted with a large
@@ -461,10 +462,17 @@ class PDRiskNetActorCritic(nn.Module):
 
         seq_len, batch_size, num_points, _ = lidar_points_seq.shape
 
+        if masks is not None:
+            frame_any_valid = masks.any(dim=1)
+            valid_frames = frame_any_valid.nonzero(as_tuple=False)
+            effective_len = valid_frames[-1].item() + 1 if len(valid_frames) > 0 else seq_len
+        else:
+            effective_len = seq_len
+
         prox_feat_seq = []
         dist_feat_seq = []
 
-        for t in range(seq_len):
+        for t in range(effective_len):
             # 获取当前帧点云 [B, N, 3]
             points_t = lidar_points_seq[t]
 
@@ -483,9 +491,17 @@ class PDRiskNetActorCritic(nn.Module):
             prox_feat_seq.append(prox_feat_t)
             dist_feat_seq.append(dist_feat_t)
 
-        # 堆叠为序列 [T, B, F]
+        # 堆叠为序列 [T, B, F]；若跳过了纯 padding 尾部则补零以维持 seq_len
         prox_feat_seq = torch.stack(prox_feat_seq, dim=0)
         dist_feat_seq = torch.stack(dist_feat_seq, dim=0)
+        if effective_len < seq_len:
+            pad_len = seq_len - effective_len
+            z_prox = torch.zeros(pad_len, batch_size, self.proximal_feature_dim,
+                                 device=prox_feat_seq.device, dtype=prox_feat_seq.dtype)
+            z_dist = torch.zeros(pad_len, batch_size, self.distal_feature_dim,
+                                 device=dist_feat_seq.device, dtype=dist_feat_seq.dtype)
+            prox_feat_seq = torch.cat([prox_feat_seq, z_prox], dim=0)
+            dist_feat_seq = torch.cat([dist_feat_seq, z_dist], dim=0)
 
         return prox_feat_seq, dist_feat_seq
 
@@ -664,6 +680,14 @@ class PDRiskNetActorCritic(nn.Module):
                 return self.critic(self._cached_actor_latent)
             # compute_returns 冷启动：空间编码 + 只读 GRU（不推进内部隐藏状态，
             # 避免下一轮 rollout 的 act() 对同一观测重复处理导致时间偏移）
+            expected_dim = self.proprio_obs_dim + self.num_lidar_points * 3
+            if critic_observations.shape[-1] < expected_dim:
+                raise ValueError(
+                    f"evaluate() cold-start expects >= {expected_dim}-dim actor observations, "
+                    f"got {critic_observations.shape[-1]}. "
+                    f"Call act() first to populate the cached actor latent, "
+                    f"or pass full actor observations (proprio + LiDAR)."
+                )
             proprio, prox_frame_feat, dist_frame_feat = self._encode_perception(critic_observations, masks=None)
             if self.proximal_memory_a.hidden_states is not None:
                 prox_out, _ = self.proximal_memory_a.rnn(prox_frame_feat, self.proximal_memory_a.hidden_states)

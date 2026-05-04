@@ -394,7 +394,7 @@ class Go2LidarPDRiskNet(Go2):
             # 走廊地形：终点导向 — 到达终点区域升级，前进不足 3m 降级
             forward_dist = self.root_states[env_ids, 1] - self.env_origins[env_ids, 1]
             move_up = forward_dist > self.cfg.terrain.goal_offset_y
-            move_down = (forward_dist < 3.0) & ~move_up
+            move_down = (forward_dist < float(getattr(self.cfg.pd_risknet, "move_down_threshold", 3.0))) & ~move_up
             self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
             self.terrain_levels[env_ids] = torch.clip(self.terrain_levels[env_ids], 0, self.max_terrain_level - 1)
         else:
@@ -426,6 +426,9 @@ class Go2LidarPDRiskNet(Go2):
         self.lidar_points_base[env_ids] = 0.0
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
+        if hasattr(self, 'last_last_actions'):
+            self.last_last_actions[env_ids] = 0.
+        self._update_lidar_history()
 
     def _reward_vel_avoid(self):
         cfg = self.cfg.pd_risknet
@@ -484,7 +487,6 @@ class Go2LidarPDRiskNet(Go2):
             proprio_obs,
             self.lidar_points_base.reshape(self.num_envs, -1),
         ), dim=-1)
-        self._compute_pd_risknet_features()
 
         # Privileged channel for critic: proprio + terrain height samples.
         if self.privileged_obs_buf is not None:
