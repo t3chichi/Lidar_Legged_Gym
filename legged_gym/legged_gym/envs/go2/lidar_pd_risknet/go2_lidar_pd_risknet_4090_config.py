@@ -93,6 +93,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         measured_grid_y_count = MEASURED_GRID_Y_COUNT
         mesh_type = 'trimesh'
         curriculum = True
+        max_init_terrain_level = 0  # 所有机器人从 level 0 (直线通道) 开始
 
         terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
         terrain_length = 12.
@@ -108,6 +109,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_cycles = 1.5           # 正弦波周期数
         alternate_sign = True      # 按地块索引交替反转振幅符号
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
+        straight_length = 2.0      # 起点直线段长度 (m)，先补齐两壁长度差再延伸此长度
 
         # 通道内随机方柱
         pillar_count = 3           # 每通道柱子数量

@@ -332,10 +332,18 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     corridor_width = float(getattr(cfg, "corridor_width", 3.0))
     wall_height = float(getattr(cfg, "wall_height", 0.8))
     wall_thickness = float(getattr(cfg, "wall_thickness", 0.4))
-    amplitude = float(getattr(cfg, "amplitude", 1.5))
+    max_amplitude = float(getattr(cfg, "amplitude", 1.5))
     num_cycles = float(getattr(cfg, "num_cycles", 1.5))
     terrain_len = float(getattr(cfg, "terrain_length", 12.0))
+    terrain_width_cfg = float(getattr(cfg, "terrain_width", terrain_len))
     end_margin = float(getattr(cfg, "end_margin", 0.5))
+
+    # 振幅课程学习: difficulty 来自 curiculum() (row_i / num_rows), 映射为振幅比例
+    if getattr(cfg, "curriculum", False):
+        num_rows_cfg = int(getattr(cfg, "num_rows", 4))
+        amplitude = difficulty * num_rows_cfg / max(num_rows_cfg - 1, 1) * max_amplitude
+    else:
+        amplitude = max_amplitude
 
     if getattr(cfg, "alternate_sign", False):
         if getattr(cfg, "_sign_parity", 0) == 1:
@@ -384,12 +392,15 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     v = -(x_coord.astype(np.float64) - mid_x) * cos_t + (y_coord.astype(np.float64) - y_start) * sin_t
     # 底边 = 补齐短壁 + 延伸 straight_px
     u_back = -np.float64(half_cw) * np.abs(sin_t) - np.float64(straight_px)
-    straight_area = (u >= u_back) & (y_coord < y_start) & (np.abs(v) <= np.float64(half_cw) * cos_t)
+    # 确保直线通道不超出子地块边界，四周保留至少 1 像素围墙
+    x_in_bounds = (x_coord >= 1) & (x_coord < size_x - 1)
+    y_in_bounds = y_coord >= 1
+    straight_area = (u >= u_back) & (y_coord < y_start) & (np.abs(v) <= np.float64(half_cw) * cos_t) & x_in_bounds & y_in_bounds
 
     in_corridor = (
-        ((y_coord >= y_start) & (y_coord <= y_end) & (dx <= half_cw)) |
+        ((y_coord >= y_start) & (y_coord <= y_end) & (dx <= half_cw) & x_in_bounds) |
         straight_area |
-        ((y_coord > y_end) & (dist_end <= half_cw))
+        ((y_coord > y_end) & (dist_end <= half_cw) & x_in_bounds)
     )
 
     # 初始化高度图：全图墙壁，通道区域覆盖为地板
@@ -447,12 +458,12 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
                     terrain.height_field_raw[x1:x2, y1:y2] = wall_height_px
                     break
 
-    # 终点信息存 cfg 供环境读取（终点 = 右端半圆圆心在 world 坐标系的 (X, Y)）
-    cfg.goal_center_x = float(terrain_len) / 2.0
-    cfg.goal_center_y = float(terrain_len) - corridor_width / 2.0 - end_margin
+    # 终点信息存 cfg 供环境读取（offset 相对 env_origin，即通道入口中心）
+    cfg.goal_offset_x = float(terrain_len - terrain_width_cfg) / 2.0
+    cfg.goal_offset_y = float(terrain_len) - corridor_width - 2.0 * end_margin
     cfg.goal_radius = corridor_width / 2.0
 
-    # 起点切线方向 = 矩形墙壁方向
+    # 起点切线方向
     terrain.spawn_angle = float(np.arctan2(1.0, tangent_slope))
 
     return terrain

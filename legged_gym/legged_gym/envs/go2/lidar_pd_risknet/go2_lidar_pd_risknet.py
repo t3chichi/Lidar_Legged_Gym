@@ -318,9 +318,9 @@ class Go2LidarPDRiskNet(Go2):
 
         # 通道终点到达检测
         pd_cfg = self.cfg.pd_risknet
-        if hasattr(self.cfg.terrain, "goal_center_x") and getattr(pd_cfg, "goal_enabled", False):
-            gx = self.cfg.terrain.goal_center_x
-            gy = self.cfg.terrain.goal_center_y
+        if hasattr(self.cfg.terrain, "goal_offset_x") and getattr(pd_cfg, "goal_enabled", False):
+            gx = self.env_origins[:, 0] + self.cfg.terrain.goal_offset_x
+            gy = self.env_origins[:, 1] + self.cfg.terrain.goal_offset_y
             gr = self.cfg.terrain.goal_radius
             dist = torch.sqrt(
                 (self.base_pos[:, 0] - gx) ** 2 +
@@ -331,10 +331,10 @@ class Go2LidarPDRiskNet(Go2):
 
     def _reward_goal(self):
         pd_cfg = self.cfg.pd_risknet
-        if not hasattr(self.cfg.terrain, "goal_center_x") or not getattr(pd_cfg, "goal_enabled", False):
+        if not hasattr(self.cfg.terrain, "goal_offset_x") or not getattr(pd_cfg, "goal_enabled", False):
             return torch.zeros(self.num_envs, device=self.device)
-        gx = self.cfg.terrain.goal_center_x
-        gy = self.cfg.terrain.goal_center_y
+        gx = self.env_origins[:, 0] + self.cfg.terrain.goal_offset_x
+        gy = self.env_origins[:, 1] + self.cfg.terrain.goal_offset_y
         gr = self.cfg.terrain.goal_radius
         dist = torch.sqrt(
             (self.base_pos[:, 0] - gx) ** 2 +
@@ -380,27 +380,34 @@ class Go2LidarPDRiskNet(Go2):
             gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _update_terrain_curriculum(self, env_ids):
-        """Override: use a fixed move_down threshold decoupled from episode_length_s.
+        """地形课程升降级，支持两种模式（向上兼容）。
 
-        The parent implementation uses `max_episode_length_s * 0.5` as the
-        move_down threshold, which scales with episode length. With longer episodes
-        (40s), this would make move_down trigger too easily. Instead, we use a
-        fixed threshold of 4.0m (~half the terrain grid), so only robots that
-        genuinely fail to navigate (collide early, walk very little) get moved
-        to easier terrain, preventing the "difficulty spike then sharp drop" pattern.
+        走廊地形（存在 goal_offset_y）：终点导向 — 到达终点区域升级，前进不足 3m 降级。
+        非走廊地形：距离导向 — 行走距离 > env_length/2 升级（原始逻辑不变）。
+
+        本方法在 reset_idx 之前调用，因此 root_states 仍是 episode 结束时的位置。
         """
         if not self.init_done:
             return
-        distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
-        move_up = distance > self.terrain.env_length / 2
-        # Fixed threshold: 4m (half the 8m terrain grid).
-        # If robot walks less than ~4m, terrain was too hard → move down.
-        move_down = (distance < torch.norm(self.commands[env_ids, :2], dim=1) * 4.0) * ~move_up
-        self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
-        self.terrain_levels[env_ids] = torch.where(
-            self.terrain_levels[env_ids] >= self.max_terrain_level,
-            torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level),
-            torch.clip(self.terrain_levels[env_ids], 0))
+
+        if hasattr(self.cfg.terrain, "goal_offset_y"):
+            # 走廊地形：终点导向 — 到达终点区域升级，前进不足 3m 降级
+            forward_dist = self.root_states[env_ids, 1] - self.env_origins[env_ids, 1]
+            move_up = forward_dist > self.cfg.terrain.goal_offset_y
+            move_down = (forward_dist < 3.0) & ~move_up
+            self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
+            self.terrain_levels[env_ids] = torch.clip(self.terrain_levels[env_ids], 0, self.max_terrain_level - 1)
+        else:
+            # 非走廊地形：原始距离导向（向后兼容，逻辑与原 override 一致）
+            distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
+            move_up = distance > self.terrain.env_length / 2
+            move_down = (distance < torch.norm(self.commands[env_ids, :2], dim=1) * 4.0) * ~move_up
+            self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
+            self.terrain_levels[env_ids] = torch.where(
+                self.terrain_levels[env_ids] >= self.max_terrain_level,
+                torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level),
+                torch.clip(self.terrain_levels[env_ids], 0))
+
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
 
     def update_command_curriculum(self, env_ids):

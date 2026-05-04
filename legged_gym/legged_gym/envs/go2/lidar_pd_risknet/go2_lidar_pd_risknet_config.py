@@ -26,7 +26,7 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
-        rot_randomization_range = [-0.26, 0.26]   # 相对切线方向的偏航随机范围 (rad)
+        rot_randomization_range = [-0.2, 0.2]   # 相对切线方向的偏航随机范围 (rad)
         spawn_offset_range = 0.2                 # 出生点 XY 随机偏移范围 (m)
 
     class pd_risknet:
@@ -49,7 +49,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_speed_scale = 0.45  # 避障速度 = 指令速度 × 比例系数
+        avoid_speed_scale = 0.6  # 避障速度 = 指令速度 × 比例系数
 
         # 通道终点奖励
         goal_enabled = True
@@ -77,30 +77,32 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         measured_grid_x_count = MEASURED_GRID_X_COUNT
         measured_grid_y_count = MEASURED_GRID_Y_COUNT
         mesh_type = 'trimesh'
-        curriculum = False
+        curriculum = True
+        max_init_terrain_level = 0  # 所有机器人从 level 0 (直线通道) 开始
 
         terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
         terrain_length = 16.
         terrain_width = 16.
-        num_rows = 4
-        num_cols = 3
+        num_rows = 5  # 振幅课程: 0→0.25→0.5→0.75→1.0
+        num_cols = 2
           
 
         # 弯曲通道地形配置
         corridor_width = 3.0       # 通道宽度 (m)
         wall_height = 0.8          # 墙壁高度 (m)
-        wall_thickness = 0.5       # 墙壁厚度 (m)
-        amplitude = 1.2            # 正弦波振幅 (m)
+        wall_thickness = 2       # 墙壁厚度 (m)
+        amplitude = 1.0            # 正弦波振幅 (m)
         num_cycles = 1.5           # 正弦波周期数
         alternate_sign = True      # 按地块索引交替反转振幅符号
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
+        straight_length = 1.0      # 起点直线段长度 (m)，先补齐两壁长度差再延伸此长度
 
         # 通道内随机方柱
-        pillar_count = 4           # 每通道柱子数量
+        pillar_count = 0           # 每通道柱子数量
         pillar_half_width = 0.15   # 柱子半宽 (m), 全宽=0.3m
         pillar_min_separation = 3  # 柱子间最小净距 (m)
         pillar_wall_margin = 0.8   # 柱子与墙最小净距 (m)
-        pillar_centerline_margin = 0.0  # 柱子与中心线最小距离 (m)
+        pillar_centerline_margin = 0.4  # 柱子与中心线最小距离 (m)
         pillar_margin_end = 3.0    # 柱子距两端半圆圆心最小距离 (m)
 
     class commands(Go2RoughCfg.commands):
