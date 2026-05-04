@@ -31,6 +31,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 24  # AutoDL使用，4096环境(原10线程)
             max_gpu_contact_pairs = 2**23  # 2**24 -> needed for 8000 envs and more
+            found_lost_aggregate_pairs_capacity = 2**24  # trimesh terrain (walls+pillars) 碰撞体远超默认值
 
     class raycaster(Go2RoughCfg.raycaster):
         enable_raycast = True
