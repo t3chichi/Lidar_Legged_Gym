@@ -158,6 +158,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             gait_2_step = 0.        # 论文不使用（-5.0 强制 trot 步态是跪行主因）
             ang_vel_xy = 0.         # 论文不使用
 
+            y_progress = 0.5  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
             goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             
 
@@ -189,7 +190,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 10  # AutoDL使用，4096环境(原10线程)
-            max_gpu_contact_pairs = 2**24  # 2**24 -> needed for 8000 envs and more
+            max_gpu_contact_pairs = 2**23  # 2**24 -> needed for 8000 envs and more
             default_buffer_size_multiplier = 10
 
         

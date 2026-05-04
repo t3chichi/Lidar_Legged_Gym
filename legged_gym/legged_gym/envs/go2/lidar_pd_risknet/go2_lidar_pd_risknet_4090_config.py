@@ -142,6 +142,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
             goal = 1.0  # 通道终点到达奖励
             rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
+            y_progress = 0.5  # 世界坐标系 Y 进度奖励
 
             # Auxiliary rewards from appendix Table 5.
             lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动

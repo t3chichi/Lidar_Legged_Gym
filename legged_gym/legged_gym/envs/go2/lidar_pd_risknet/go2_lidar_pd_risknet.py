@@ -86,11 +86,17 @@ class Go2LidarPDRiskNet(Go2):
             requires_grad=False,
         )
         self.v_avoid = torch.zeros(
-            self.num_envs, 
-            2, 
-            device=self.device, 
-            dtype=torch.float, 
+            self.num_envs,
+            2,
+            device=self.device,
+            dtype=torch.float,
             requires_grad=False
+        )
+        self.y_max = torch.zeros(
+            self.num_envs,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
         )
 
     def _init_lidar_sensor(self):
@@ -426,6 +432,7 @@ class Go2LidarPDRiskNet(Go2):
         self.lidar_points_base[env_ids] = 0.0
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
+        self.y_max[env_ids] = self.base_pos[env_ids, 1]
         if hasattr(self, 'last_last_actions'):
             self.last_last_actions[env_ids] = 0.
         self._update_lidar_history()
@@ -440,6 +447,12 @@ class Go2LidarPDRiskNet(Go2):
         d_max = float(self.cfg.pd_risknet.ray_max_distance)
         clipped = torch.clamp(self.raycast_distances, max=d_max)
         return torch.mean(clipped / d_max, dim=1)
+
+    def _reward_y_progress(self):
+        new_max = torch.maximum(self.y_max, self.base_pos[:, 1])
+        progress = new_max - self.y_max
+        self.y_max = new_max
+        return progress / self.dt
 
     # --- 对齐论文 Table 5 的奖励机制覆盖 ---
 
