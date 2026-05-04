@@ -81,10 +81,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         max_init_terrain_level = 0  # 所有机器人从 level 0 (直线通道) 开始
 
         terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
-        terrain_length = 16.
-        terrain_width = 16.
+        terrain_length = 15
+        terrain_width = 15
         num_rows = 5  # 振幅课程: 0→0.25→0.5→0.75→1.0
-        num_cols = 2
+        num_cols = 4
           
 
         # 弯曲通道地形配置
@@ -190,7 +190,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 10  # AutoDL使用，4096环境(原10线程)
             max_gpu_contact_pairs = 2**23  # 2**24 -> needed for 8000 envs and more
-            found_lost_aggregate_pairs_capacity = 2**24  # trimesh terrain (walls+pillars) 碰撞体远超默认值
         
 class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
