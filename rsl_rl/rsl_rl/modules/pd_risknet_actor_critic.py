@@ -670,7 +670,12 @@ class PDRiskNetActorCritic(nn.Module):
 
     def evaluate(self, critic_observations, masks=None, hidden_states=None, **kwargs):
         if masks is not None:
-            # 训练路径：从存储的 Actor 观测重建感知表征
+            # 训练路径：优先复用 act() 中 _build_actor_latent() 刚写入的缓存。
+            # PPO.update() 总是先调 act(obs_batch) 再调 evaluate(obs_batch)，
+            # 且传入同一个 obs_batch tensor，缓存一定是最新的。
+            if self._cached_actor_latent is not None:
+                return self.critic(self._cached_actor_latent)
+            # 缓存未命中时走原路径（理论上不会触发，保留作为安全网）
             actor_latent = self._build_actor_latent(
                 critic_observations, masks=masks, hidden_states=hidden_states
             )
