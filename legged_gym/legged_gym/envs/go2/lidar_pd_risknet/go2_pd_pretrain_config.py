@@ -146,9 +146,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             # feet_contact_forces = -0.01
             # gait_scheduler = -3
 
-            gait_2_step = -5.0
-
-
+            gait_2_step = -3.0
             
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
