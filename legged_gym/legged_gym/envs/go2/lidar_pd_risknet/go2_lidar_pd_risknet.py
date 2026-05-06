@@ -445,7 +445,10 @@ class Go2LidarPDRiskNet(Go2):
 
     def _reward_rays(self):
         d_max = float(self.cfg.pd_risknet.ray_max_distance)
-        clipped = torch.clamp(self.raycast_distances, max=d_max)
+        dist = self.avoid_distances
+        k = max(int(dist.shape[1] * 0.5), 1)
+        closest = torch.topk(dist, k, dim=1, largest=False)[0]
+        clipped = torch.clamp(closest, max=d_max)
         return torch.mean(clipped / d_max, dim=1)
 
     def _reward_y_progress(self):
