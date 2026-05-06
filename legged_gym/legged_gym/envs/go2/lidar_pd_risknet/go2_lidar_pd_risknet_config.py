@@ -110,9 +110,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.1, 0.9]  # min max [m/s]
-            lin_vel_y = [-0.2, 0.2]  # min max [m/s]
-            ang_vel_yaw = [-0.2, 0.2]    # min max [rad/s]
+            lin_vel_x = [0.1, 1.0]  # min max [m/s]
+            lin_vel_y = [-0.1, 0.1]  # min max [m/s]
+            ang_vel_yaw = [-0.05, 0.05]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -150,15 +150,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            # 显式禁用论文外的继承奖励（注释掉不会覆盖父类，必须显式设 0）
             tracking_lin_vel = 0.   # vel_avoid 已包含速度跟踪
             tracking_ang_vel = 0.   # vel_avoid 已包含速度跟踪
             feet_air_time = 0.      # 论文不使用
             base_height = 0.        # 论文不使用
-            gait_2_step = 0.        # 论文不使用（-5.0 强制 trot 步态是跪行主因）
+            gait_2_step = -0.5      # 论文不使用
             ang_vel_xy = 0.         # 论文不使用
 
-            y_progress = 0.5  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
+            y_progress = 1.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
             goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             
 
