@@ -209,4 +209,4 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         num_steps_per_env = 24
         experiment_name = "go2_pd_pretrain"
         run_name = ""
-        max_iterations = 600
+        max_iterations = 300
