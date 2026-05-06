@@ -83,6 +83,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         class ranges(Go2RoughCfg.commands.ranges):
             ang_vel_yaw = [-1.5, 1.5]
 
+            # lin_vel_x = [0.15, 1.0]  # min max [m/s]
+            # lin_vel_y = [0.1, 0.1]  # min max [m/s]
+            # ang_vel_yaw = [-0.05, 0.05]    # min max [rad/s]
+
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
         # Current base pipeline assumes one actor per env and needs a larger refactor
@@ -141,6 +145,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             feet_air_time = 1.0
             # feet_contact_forces = -0.01
             # gait_scheduler = -3
+
+            gait_2_step = -5.0
 
 
             
