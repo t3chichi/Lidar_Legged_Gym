@@ -66,7 +66,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Anti-flip termination gates to avoid upside-down reward exploitation.
         enable_fall_termination = True
         # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
-        fall_projected_gravity_z_threshold = 0.1
+        fall_projected_gravity_z_threshold = -0.1
         # Terminate when base height is unrealistically low (meters).
         fall_base_height_threshold = 0.1
 
