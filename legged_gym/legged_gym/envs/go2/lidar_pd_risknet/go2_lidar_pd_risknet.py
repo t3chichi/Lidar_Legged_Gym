@@ -349,6 +349,9 @@ class Go2LidarPDRiskNet(Go2):
         reached = (dist < gr) & (self.base_pos[:, 1] > gy)
         return reached.float() * pd_cfg.goal_reward
 
+    def _reward_ang_vel_yaw_penalty(self):                                        
+      return torch.square(self.base_ang_vel[:, 2])
+    
     def _reset_root_states(self, env_ids):
         if self.custom_origins:
             self.root_states[env_ids] = self.base_init_state
