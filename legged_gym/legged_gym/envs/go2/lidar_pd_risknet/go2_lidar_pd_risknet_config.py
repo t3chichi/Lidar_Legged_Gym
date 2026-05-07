@@ -24,6 +24,9 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
+    class asset(Go2RoughCfg.asset):
+        terminate_after_contacts_on = []
+
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
         rot_randomization_range = [-0.2, 0.2]   # 相对切线方向的偏航随机范围 (rad)
@@ -61,11 +64,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Critic input uses proprio (48) + privileged heights (187).
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         # Anti-flip termination gates to avoid upside-down reward exploitation.
-        enable_fall_termination = False
+        enable_fall_termination = True
         # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
-        fall_projected_gravity_z_threshold = -0.1
+        fall_projected_gravity_z_threshold = 0.1
         # Terminate when base height is unrealistically low (meters).
-        fall_base_height_threshold = 0.12
+        fall_base_height_threshold = 0.1
 
     class terrain(Go2RoughCfg.terrain):
         horizontal_scale = 0.1
@@ -106,13 +109,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         pillar_margin_end = 3.0    # 柱子距两端半圆圆心最小距离 (m)
 
     class commands(Go2RoughCfg.commands):
-        heading_command = False
+        heading_command = True
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.2, 1.0]  # min max [m/s]
             lin_vel_y = [-0.1, 0.1]  # min max [m/s]
-            ang_vel_yaw = [-0.05, 0.05]    # min max [rad/s]
+            ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
+            heading = [1.07, 2.07]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -158,8 +162,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             ang_vel_xy = 0.0
 
             y_progress = 1.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
-            ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
+            # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             
 
     class normalization(Go2RoughCfg.normalization):
