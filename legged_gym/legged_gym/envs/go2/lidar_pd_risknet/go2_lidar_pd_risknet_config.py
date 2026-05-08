@@ -154,12 +154,12 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 0.5   
+            tracking_lin_vel = 5.0e-1   
             tracking_ang_vel = 0.0   
             feet_air_time = 1.0      
-            base_height = -0.1   
-            gait_2_step = -0.5    
-            ang_vel_xy = 0.0
+            base_height = -1.0e-1   
+            gait_2_step = -5.0e-1    
+            ang_vel_xy = -5.0e-2
 
             y_progress = 1.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
             goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
