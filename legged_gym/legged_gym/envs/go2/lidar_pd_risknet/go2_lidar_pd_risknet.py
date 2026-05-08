@@ -492,11 +492,20 @@ class Go2LidarPDRiskNet(Go2):
 
     def compute_observations(self):
         # Keep base proprio order identical to Go2/LeggedRobot, then append LiDAR history.
+        # heading_command 开启时使用稳定的 heading 目标（列3）代替每步变化的 P 控制输出（列2）
+        if self.cfg.commands.heading_command:
+            cmd_obs = torch.cat((
+                self.commands[:, :2] * self.commands_scale[:2],
+                self.commands[:, 3:4] * self.commands_scale[2:3],
+            ), dim=-1)
+        else:
+            cmd_obs = self.commands[:, :3] * self.commands_scale
+
         proprio_obs = torch.cat((
             self.base_lin_vel * self.obs_scales.lin_vel,
             self.base_ang_vel * self.obs_scales.ang_vel,
             self.projected_gravity,
-            self.commands[:, :3] * self.commands_scale,
+            cmd_obs,
             (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
             self.dof_vel * self.obs_scales.dof_vel,
             self.actions,
