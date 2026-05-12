@@ -157,7 +157,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             tracking_lin_vel = 5.0e-1   
             tracking_ang_vel = 0.0   
             feet_air_time = 1.0      
-            base_height = -2.0e-1   
+            base_height = -3.0e-1   
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
 
@@ -237,4 +237,4 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         num_steps_per_env = 24
         experiment_name = "go2_lidar_pd_risknet"
         run_name = ""
-        max_iterations = 2000
+        max_iterations = 4000
