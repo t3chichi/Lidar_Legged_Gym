@@ -160,6 +160,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             base_height = -3.0e-1   
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
+            orientation = -1.0
 
             y_progress = 1.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
             goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
