@@ -56,7 +56,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         # 通道终点奖励
         goal_enabled = True
-        goal_reward = 5.0
+        goal_reward = 10.0
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
@@ -113,10 +113,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.2, 1.0]  # min max [m/s]
+            lin_vel_x = [0.1, 0.5]  # min max [m/s]
             lin_vel_y = [-0.1, 0.1]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [1.07, 2.07]
+            heading = [1.17, 1.97]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -157,16 +157,16 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             tracking_lin_vel = 5.0e-1   
             tracking_ang_vel = 0.0   
             feet_air_time = 1.0      
-            base_height = -3.0e-1   
+            base_height = -1.0   
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
             orientation = -1.0
 
             #override
-            lin_vel_z = -1.0e-3
+            # lin_vel_z = -1.0e-3
 
             y_progress = 1.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
-            goal = 5.0  # 通道终点到达奖励（任务特有，论文无通道场景）
+            goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             
 

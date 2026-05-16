@@ -462,10 +462,10 @@ class Go2LidarPDRiskNet(Go2):
 
     # --- 对齐论文 Table 5 的奖励机制覆盖 ---
 
-    def _reward_base_height(self):
-        base_height = torch.mean(
-            self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        return torch.abs(base_height - self.cfg.rewards.base_height_target)
+    # def _reward_base_height(self):
+    #     base_height = torch.mean(
+    #         self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
+    #     return torch.abs(base_height - self.cfg.rewards.base_height_target)
 
     def _reward_collision(self):
         """ 论文公式：||Force_xy||² × -0.02（连续平方水平力，替代二值阈值）"""
