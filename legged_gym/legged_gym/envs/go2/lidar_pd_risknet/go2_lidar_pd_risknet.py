@@ -21,7 +21,7 @@ class Go2LidarPDRiskNet(Go2):
 
     def _init_buffers(self):
         # Override: longer episodes give robots more walking time per episode.
-        self.cfg.env.episode_length_s = 30
+        self.cfg.env.episode_length_s = 50
         super()._init_buffers()
         # Enable per-step debug drawing for this task when viewer is available.
         self.debug_viz = True
