@@ -157,11 +157,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             tracking_lin_vel = 5.0e-1   
             tracking_ang_vel = 0.0   
             feet_air_time = 1.0      
-            base_height = -5.0   
+            base_height = -2.5
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
-            orientation = -5.0
-
+            orientation = -2.5
             #override
             # lin_vel_z = -1.0e-3
 
