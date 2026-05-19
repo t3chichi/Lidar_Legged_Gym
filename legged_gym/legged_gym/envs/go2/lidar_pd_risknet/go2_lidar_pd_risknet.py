@@ -98,6 +98,10 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self.base_lin_vel_smooth = torch.zeros(
+            self.num_envs, 3, device=self.device,
+            dtype=torch.float, requires_grad=False,
+        )
 
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
@@ -294,13 +298,18 @@ class Go2LidarPDRiskNet(Go2):
 
         min_dist_per_sec = torch.stack(min_dist_per_sec, dim=1)
 
+        ema = float(cfg.avoid_vel_ema)
+        self.base_lin_vel_smooth[:] = ema * self.base_lin_vel_smooth + (1.0 - ema) * self.base_lin_vel
+
         sec_centers = torch.linspace(-math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec, device=self.device)
         away_dirs = torch.stack((-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1).unsqueeze(0)
 
         active = min_dist_per_sec < float(cfg.avoid_distance_thresh)
         mag = torch.exp(-min_dist_per_sec * float(cfg.avoid_alpha)) * active.float()
-        cmd_speed = torch.norm(self.commands[:, :2], dim=1).clamp(min=0.2)
-        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1) * (cmd_speed * float(cfg.avoid_speed_scale)).unsqueeze(-1)
+        sec_dirs = -away_dirs
+        v_proj = torch.sum(self.base_lin_vel_smooth[:, :2].unsqueeze(1) * sec_dirs, dim=2)
+        v_proj = torch.clamp(v_proj, min=0.0)
+        self.v_avoid = torch.sum(away_dirs * (v_proj * mag).unsqueeze(-1), dim=1)
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
@@ -435,6 +444,7 @@ class Go2LidarPDRiskNet(Go2):
         self.lidar_points_base[env_ids] = 0.0
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
+        self.base_lin_vel_smooth[env_ids] = 0.0
         self.y_max[env_ids] = self.base_pos[env_ids, 1]
         if hasattr(self, 'last_last_actions'):
             self.last_last_actions[env_ids] = 0.
@@ -443,7 +453,7 @@ class Go2LidarPDRiskNet(Go2):
     def _reward_vel_avoid(self):
         cfg = self.cfg.pd_risknet
         vel_target = self.commands[:, :2] + self.v_avoid
-        vel_err = torch.sum(torch.square(self.base_lin_vel[:, :2] - vel_target), dim=1)
+        vel_err = torch.sum(torch.square(self.base_lin_vel_smooth[:, :2] - vel_target), dim=1)
         return torch.exp(-float(cfg.avoid_beta) * vel_err)
 
     def _reward_rays(self):
