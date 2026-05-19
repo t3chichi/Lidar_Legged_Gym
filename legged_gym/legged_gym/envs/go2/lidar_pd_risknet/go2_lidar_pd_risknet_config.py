@@ -58,6 +58,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         goal_enabled = True
         goal_reward = 10.0
 
+        # 地形课程升降级
+        move_down_ratio = 0.4                 # 降级阈值：forward_dist / goal_dist < 此比例
+        consecutive_upgrade_episodes = 3      # 连续 N 回合到达终点才触发升级
+        consecutive_downgrade_episodes = 5    # 连续 N 回合未达降级阈值才触发降级
+
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
         num_observations = PD_PROPRIO_DIM + OBS_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3

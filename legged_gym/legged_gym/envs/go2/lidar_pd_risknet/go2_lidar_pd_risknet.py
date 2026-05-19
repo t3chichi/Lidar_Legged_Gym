@@ -21,7 +21,7 @@ class Go2LidarPDRiskNet(Go2):
 
     def _init_buffers(self):
         # Override: longer episodes give robots more walking time per episode.
-        self.cfg.env.episode_length_s = 60
+        self.cfg.env.episode_length_s = 35
         super()._init_buffers()
         # Enable per-step debug drawing for this task when viewer is available.
         self.debug_viz = True
@@ -102,6 +102,12 @@ class Go2LidarPDRiskNet(Go2):
             self.num_envs, 3, device=self.device,
             dtype=torch.float, requires_grad=False,
         )
+        self._consecutive_upgrade_count = torch.zeros(
+            self.num_envs, device=self.device,
+            dtype=torch.int32, requires_grad=False)
+        self._consecutive_downgrade_count = torch.zeros(
+            self.num_envs, device=self.device,
+            dtype=torch.int32, requires_grad=False)
 
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
@@ -400,7 +406,7 @@ class Go2LidarPDRiskNet(Go2):
     def _update_terrain_curriculum(self, env_ids):
         """地形课程升降级，支持两种模式（向上兼容）。
 
-        走廊地形（存在 goal_offset_y）：终点导向 — 到达终点区域升级，前进不足 3m 降级。
+        走廊地形（存在 goal_offset_y）：终点导向 — 到达终点区域升级，前进不足目标比例降级。
         非走廊地形：距离导向 — 行走距离 > env_length/2 升级（原始逻辑不变）。
 
         本方法在 reset_idx 之前调用，因此 root_states 仍是 episode 结束时的位置。
@@ -409,12 +415,51 @@ class Go2LidarPDRiskNet(Go2):
             return
 
         if hasattr(self.cfg.terrain, "goal_offset_y"):
-            # 走廊地形：终点导向 — 到达终点区域升级，前进不足 3m 降级
             forward_dist = self.root_states[env_ids, 1] - self.env_origins[env_ids, 1]
-            move_up = forward_dist > (self.cfg.terrain.goal_offset_y - self.cfg.terrain.goal_radius)
-            move_down = (forward_dist < float(getattr(self.cfg.pd_risknet, "move_down_threshold", 3.0))) & ~move_up
+            goal_dist = self.cfg.terrain.goal_offset_y - self.cfg.terrain.goal_radius
+
+            move_up_raw = forward_dist > goal_dist
+            move_down_ratio = float(getattr(self.cfg.pd_risknet, "move_down_ratio", 0.5))
+            move_down_raw = (forward_dist < move_down_ratio * goal_dist) & ~move_up_raw
+
+            # 升级：连续 N 回合到达终点
+            cons_up = int(getattr(self.cfg.pd_risknet, "consecutive_upgrade_episodes", 3))
+            self._consecutive_upgrade_count[env_ids] = torch.where(
+                move_up_raw,
+                self._consecutive_upgrade_count[env_ids] + 1,
+                torch.zeros_like(self._consecutive_upgrade_count[env_ids]))
+            move_up = self._consecutive_upgrade_count[env_ids] >= cons_up
+
+            # 降级：连续 N 回合未达阈值
+            cons_down = int(getattr(self.cfg.pd_risknet, "consecutive_downgrade_episodes", 5))
+            self._consecutive_downgrade_count[env_ids] = torch.where(
+                move_down_raw,
+                self._consecutive_downgrade_count[env_ids] + 1,
+                torch.zeros_like(self._consecutive_downgrade_count[env_ids]))
+            self._consecutive_downgrade_count[env_ids] = torch.where(
+                move_up_raw,
+                torch.zeros_like(self._consecutive_downgrade_count[env_ids]),
+                self._consecutive_downgrade_count[env_ids])
+            move_down = self._consecutive_downgrade_count[env_ids] >= cons_down
+
+            # 升级将降级计数也归零
+            self._consecutive_downgrade_count[env_ids] = torch.where(
+                move_up,
+                torch.zeros_like(self._consecutive_downgrade_count[env_ids]),
+                self._consecutive_downgrade_count[env_ids])
+
             self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
-            self.terrain_levels[env_ids] = torch.clip(self.terrain_levels[env_ids], 0, self.max_terrain_level - 1)
+            self.terrain_levels[env_ids] = torch.clip(
+                self.terrain_levels[env_ids], 0, self.max_terrain_level - 1)
+
+            self._consecutive_upgrade_count[env_ids] = torch.where(
+                move_up | move_down,
+                torch.zeros_like(self._consecutive_upgrade_count[env_ids]),
+                self._consecutive_upgrade_count[env_ids])
+            self._consecutive_downgrade_count[env_ids] = torch.where(
+                move_down,
+                torch.zeros_like(self._consecutive_downgrade_count[env_ids]),
+                self._consecutive_downgrade_count[env_ids])
         else:
             # 非走廊地形：原始距离导向（向后兼容，逻辑与原 override 一致）
             distance = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)

@@ -22,8 +22,8 @@ def play(args):
     env_cfg.terrain.max_init_terrain_level = 4  # rows 0~4 全部可用
 
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, 15)
-    env_cfg.noise.add_noise = False
-    env_cfg.domain_rand.randomize_friction = False
+    env_cfg.noise.add_noise = True
+    env_cfg.domain_rand.randomize_friction = True
 
     env_cfg.sim.physx.num_threads = 2
     env_cfg.sim.physx.max_gpu_contact_pairs = 2**19
