@@ -341,7 +341,7 @@ class Go2LidarPDRiskNet(Go2):
                 (self.base_pos[:, 0] - gx) ** 2 +
                 (self.base_pos[:, 1] - gy) ** 2
             )
-            reached = (dist < gr) & (self.base_pos[:, 1] > gy)
+            reached = dist < gr
             self.reset_buf |= reached
 
     def _reward_goal(self):
@@ -355,7 +355,7 @@ class Go2LidarPDRiskNet(Go2):
             (self.base_pos[:, 0] - gx) ** 2 +
             (self.base_pos[:, 1] - gy) ** 2
         )
-        reached = (dist < gr) & (self.base_pos[:, 1] > gy)
+        reached = dist < gr
         return reached.float() * pd_cfg.goal_reward
 
     def _reward_ang_vel_yaw_penalty(self):                                        
@@ -411,7 +411,7 @@ class Go2LidarPDRiskNet(Go2):
         if hasattr(self.cfg.terrain, "goal_offset_y"):
             # 走廊地形：终点导向 — 到达终点区域升级，前进不足 3m 降级
             forward_dist = self.root_states[env_ids, 1] - self.env_origins[env_ids, 1]
-            move_up = forward_dist > self.cfg.terrain.goal_offset_y
+            move_up = forward_dist > (self.cfg.terrain.goal_offset_y - self.cfg.terrain.goal_radius)
             move_down = (forward_dist < float(getattr(self.cfg.pd_risknet, "move_down_threshold", 3.0))) & ~move_up
             self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
             self.terrain_levels[env_ids] = torch.clip(self.terrain_levels[env_ids], 0, self.max_terrain_level - 1)

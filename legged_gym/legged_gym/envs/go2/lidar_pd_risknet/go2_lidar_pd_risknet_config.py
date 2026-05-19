@@ -43,7 +43,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 24
         avoid_distance_thresh = 1.5
-        avoid_alpha = 1.5
+        avoid_alpha = 1.2
         avoid_beta = 1.0
         ray_max_distance = 10.0
 
@@ -99,6 +99,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         alternate_sign = True      # 按地块索引交替反转振幅符号
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
         straight_length = 1.0      # 起点直线段长度 (m)，先补齐两壁长度差再延伸此长度
+        goal_forward_margin = 0.6  # 终点向前挪动距离 (m)
+        goal_radius = 1.6          # 终点半径 (m)
 
         # 通道内随机方柱
         pillar_count = 0           # 每通道柱子数量

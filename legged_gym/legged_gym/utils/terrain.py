@@ -90,6 +90,7 @@ class Terrain:
                 self.cfg._sign_parity = (i + j) % 2
             terrain = self.make_terrain(choice, difficulty)
             self.add_terrain_to_map(terrain, i, j)
+        self._draw_goal_rings()
 
     def curiculum(self, difficulty_scale=1.0):
         for j in range(self.cfg.num_cols):
@@ -101,6 +102,7 @@ class Terrain:
                     self.cfg._sign_parity = (i + j) % 2
                 terrain = self.make_terrain(choice, difficulty)
                 self.add_terrain_to_map(terrain, i, j)
+        self._draw_goal_rings()
 
     def selected_terrain(self):
         terrain_type = self.cfg.terrain_kwargs.pop('type')
@@ -116,6 +118,7 @@ class Terrain:
 
             eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
             self.add_terrain_to_map(terrain, i, j)
+        self._draw_goal_rings()
 
     def make_terrain(self, choice, difficulty):
         terrain = terrain_utils.SubTerrain("terrain",
@@ -194,6 +197,29 @@ class Terrain:
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
         if hasattr(terrain, "spawn_angle"):
             self.spawn_angles[i, j] = terrain.spawn_angle
+
+    def _draw_goal_rings(self):
+        """在地形高度图上绘制终点轮廓圈（走廊地形）。"""
+        if not hasattr(self.cfg, "goal_offset_x") or not hasattr(self.cfg, "corridor_width"):
+            return
+        hs = self.cfg.horizontal_scale
+        vs = self.cfg.vertical_scale
+        ring_r_px = int(self.cfg.goal_radius / hs)
+        ring_h_px = max(int(0.03 / vs), 1)
+        N = max(ring_r_px * 6, 24)
+        for i in range(self.cfg.num_rows):
+            for j in range(self.cfg.num_cols):
+                gx = self.env_origins[i, j, 0] + self.cfg.goal_offset_x
+                gy = self.env_origins[i, j, 1] + self.cfg.goal_offset_y
+                gx_px = int(gx / hs) + self.border
+                gy_px = int(gy / hs) + self.border
+                for k in range(N):
+                    a = 2.0 * np.pi * k / N
+                    px = gx_px + int(ring_r_px * np.cos(a))
+                    py = gy_px + int(ring_r_px * np.sin(a))
+                    if 0 <= px < self.tot_rows and 0 <= py < self.tot_cols:
+                        self.height_field_raw[px, py] = max(
+                            self.height_field_raw[px, py], ring_h_px)
 
 
 def gap_terrain(terrain, gap_size, platform_size=1.):
@@ -461,7 +487,10 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     # 终点信息存 cfg 供环境读取（offset 相对 env_origin，即通道入口中心）
     cfg.goal_offset_x = float(terrain_len - terrain_width_cfg) / 2.0
     cfg.goal_offset_y = float(terrain_len) - corridor_width - 2.0 * end_margin
-    cfg.goal_radius = corridor_width / 2.0
+    goal_forward_margin = float(getattr(cfg, "goal_forward_margin", 0.0))
+    if goal_forward_margin > 0:
+        cfg.goal_offset_y -= goal_forward_margin
+    cfg.goal_radius = float(getattr(cfg, "goal_radius", corridor_width / 2.0))
 
     # 起点切线方向
     terrain.spawn_angle = float(np.arctan2(1.0, tangent_slope))
