@@ -49,7 +49,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_vel_ema = 0.9  # 避障速度 EMA 平滑系数（越大越平滑，0.9 ≈ 10步时间常数）
+        avoid_iters = 3      # 迭代挑最大轮数
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).

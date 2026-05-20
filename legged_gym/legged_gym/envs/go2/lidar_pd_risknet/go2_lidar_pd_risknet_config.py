@@ -52,7 +52,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_vel_ema = 0.9  # 避障速度 EMA 平滑系数（越大越平滑，0.9 ≈ 10步时间常数）
+        avoid_iters = 3      # 迭代挑最大轮数
 
         # 通道终点奖励
         goal_enabled = True
@@ -120,10 +120,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.2, 0.6]  # min max [m/s]
+            lin_vel_x = [0.2, 0.8]  # min max [m/s]
             lin_vel_y = [-0.1, 0.1]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [1.17, 1.97]
+            heading = [1.07, 2.07]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
