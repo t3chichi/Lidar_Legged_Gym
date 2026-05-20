@@ -311,7 +311,7 @@ class Go2LidarPDRiskNet(Go2):
         for _ in range(int(cfg.avoid_iters)):
             v_proj = torch.sum(v_combined.unsqueeze(1) * sec_dirs, dim=2)
             v_proj = torch.clamp(v_proj, min=0.0)
-            v_sec = away_dirs * (v_proj * mag).unsqueeze(-1)
+            v_sec = float(cfg.avoid_gain) * away_dirs * (v_proj * mag).unsqueeze(-1)
             mag2 = torch.sum(torch.square(v_sec), dim=-1)
             max_idx = torch.argmax(mag2, dim=-1)
             self.v_avoid += v_sec[torch.arange(self.num_envs), max_idx]

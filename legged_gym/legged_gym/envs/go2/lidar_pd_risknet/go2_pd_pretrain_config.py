@@ -40,8 +40,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 24
         avoid_distance_thresh = 1.6
-        avoid_alpha = 1.6
-        avoid_beta = 1.1
+        avoid_alpha = 1.5
+        avoid_beta = 1.0
         ray_max_distance = 6.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -50,6 +50,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
         avoid_iters = 3      # 迭代挑最大轮数
+        avoid_gain = 1.1     # 避障速度增益
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
