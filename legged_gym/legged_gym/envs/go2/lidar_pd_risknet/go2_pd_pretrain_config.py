@@ -42,7 +42,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.6
         avoid_alpha = 1.6
         avoid_beta = 1.1
-        ray_max_distance = 10.0
+        ray_max_distance = 6.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
