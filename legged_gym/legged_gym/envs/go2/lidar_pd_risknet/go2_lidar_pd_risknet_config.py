@@ -43,7 +43,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 24
         avoid_distance_thresh = 1.5
-        avoid_alpha = 1.2
+        avoid_alpha = 1.0
         avoid_beta = 1.0
         ray_max_distance = 6.0  # rays 奖励截断距离 (m)
 
@@ -53,6 +53,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
         avoid_iters = 3      # 迭代挑最大轮数
+        y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
 
         # 通道终点奖励
         goal_enabled = True
@@ -171,7 +172,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             #override
             # lin_vel_z = -1.0e-3
 
-            y_progress = 1.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
+            y_progress = 50.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             
