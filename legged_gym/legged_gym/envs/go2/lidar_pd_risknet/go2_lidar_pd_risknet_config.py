@@ -164,7 +164,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
             tracking_lin_vel = 5.0e-1   
-            tracking_ang_vel = 0.0   
+            tracking_ang_vel = 3.0e-1   
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
