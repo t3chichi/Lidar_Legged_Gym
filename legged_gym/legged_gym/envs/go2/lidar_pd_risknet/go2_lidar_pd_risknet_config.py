@@ -146,7 +146,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
-        base_height_target = 0.33
+        base_height_target = 0.35
         class scales:
             # Paper main rewards.
             vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)

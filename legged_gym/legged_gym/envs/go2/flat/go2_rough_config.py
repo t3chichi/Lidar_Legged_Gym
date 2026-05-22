@@ -101,9 +101,8 @@ class Go2RoughCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.43
         max_contact_force = 350.0
-        base_height_target = 0.25
+        base_height_target = 0.35
 
         class scales(LeggedRobotCfg.rewards.scales):
             termination = -0.0
