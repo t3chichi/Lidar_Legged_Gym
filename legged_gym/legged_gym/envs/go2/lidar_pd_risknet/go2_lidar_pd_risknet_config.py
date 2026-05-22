@@ -55,6 +55,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_iters = 3      # 迭代挑最大轮数
         avoid_gain = 1.1     # 避障速度增益
         y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
+        collision_3d = False             # 正式训练：2D 水平连续平方
 
         # 通道终点奖励
         goal_enabled = True

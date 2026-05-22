@@ -524,7 +524,12 @@ class Go2LidarPDRiskNet(Go2):
     #     return torch.abs(base_height - self.cfg.rewards.base_height_target)
 
     def _reward_collision(self):
-        """ 论文公式：||Force_xy||² × -0.02（连续平方水平力，替代二值阈值）"""
+        if getattr(self.cfg.pd_risknet, "collision_3d", False):
+            # 原版 legged_gym: 全向 3D 二值检测
+            return torch.sum(
+                (torch.norm(self.contact_forces[:, self.collision_body_indices, :], dim=-1) > 0.1).float(),
+                dim=1)
+        # 论文公式：水平 2D 连续平方
         forces_xy = torch.stack([
             torch.norm(self.contact_forces[:, idx, :2], dim=1)
             for idx in self.collision_body_indices
