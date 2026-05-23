@@ -64,7 +64,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # 地形课程升降级
         move_down_ratio = 0.4                 # 降级阈值：forward_dist / goal_dist < 此比例
         consecutive_upgrade_episodes = 3      # 连续 N 回合到达终点才触发升级
-        consecutive_downgrade_episodes = 5    # 连续 N 回合未达降级阈值才触发降级
+        consecutive_downgrade_episodes = 3    # 连续 N 回合未达降级阈值才触发降级
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
@@ -120,14 +120,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
-        heading_p_gain = 1.0       # P 增益
+        heading_p_gain = 1.0     # P 增益
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.2, 0.8]  # min max [m/s]
-            lin_vel_y = [-0.1, 0.1]  # min max [m/s]
+            lin_vel_x = [0.4, 0.8]  # min max [m/s]
+            lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [1.07, 2.07]
+            heading = [0.87, 2.27]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
