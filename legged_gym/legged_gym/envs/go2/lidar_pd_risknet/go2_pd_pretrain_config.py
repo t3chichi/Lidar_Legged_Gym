@@ -26,6 +26,7 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
+        pos = [0.0, 0.0, 0.35]  # 出生稍高于目标高度，重力落下自然发现目标
         randomize_rot = True
         rot_randomization_range = [-3.1415, 3.1415]
 
@@ -144,11 +145,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             stand_still = -0.  # 静止惩罚：惩罚长时间静止，防止策略不移动以“获利”
 
             # Overrides
-            orientation = -3.0  # 覆盖的姿态惩罚权重：更强烈地惩罚姿态偏差
+            orientation = -5.0  # 覆盖的姿态惩罚权重：更强烈地惩罚姿态偏差
             torques = -0.000025  # 覆盖的力矩惩罚权重：更严格地限制关节力矩
             feet_air_time = 1.0  # 覆盖的足端离地时间权重：保持/强调期望步态空中时间
             ang_vel_xy = -0.1
-            base_height = -3.0
+            base_height = -5.0
             # feet_contact_forces = -0.01
             # gait_scheduler = -3
 
