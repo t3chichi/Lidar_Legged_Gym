@@ -57,7 +57,7 @@ class Go2RoughCfg(LeggedRobotCfg):
             heading = [-3.14, 3.14]
 
     class init_state(LeggedRobotCfg.init_state):
-        pos = [0.0, 0.0, 0.33]  # x,y,z [m]
+        pos = [0.0, 0.0, 0.34]  # x,y,z [m]
         rot = [0.0, 0.0, 0.0, 1.0]  # x,y,z,w [quat]
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
@@ -102,7 +102,7 @@ class Go2RoughCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.9
         max_contact_force = 350.0
-        base_height_target = 0.35
+        base_height_target = 0.34
 
         class scales(LeggedRobotCfg.rewards.scales):
             termination = -0.0

@@ -26,7 +26,7 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
-        pos = [0.0, 0.0, 0.35]  # 出生稍高于目标高度，重力落下自然发现目标
+        pos = [0.0, 0.0, 0.34]  # 出生稍高于目标高度，重力落下自然发现目标
         randomize_rot = True
         rot_randomization_range = [-3.1415, 3.1415]
 
@@ -109,7 +109,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
-        base_height_target = 0.35
+        base_height_target = 0.34
         class scales(Go2RoughCfg.rewards.scales):
             # Paper main rewards.
             vel_avoid = 0 # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
