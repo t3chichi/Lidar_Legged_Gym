@@ -401,7 +401,8 @@ class LeggedRobot(BaseTask, LeggedRobotRewMixin):
             # Convert heading to ang vel command useing P controller
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
-            self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
+            p_gain = float(getattr(self.cfg.commands, "heading_p_gain", 0.5))
+            self.commands[:, 2] = torch.clip(p_gain*wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
 
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()

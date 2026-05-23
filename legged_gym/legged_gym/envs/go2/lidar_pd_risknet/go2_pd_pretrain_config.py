@@ -82,14 +82,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
+        heading_p_gain = 1.0       # P 增益
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
+            lin_vel_x = [0.2, 1.0]   # 前向速度
+            lin_vel_y = [-0.3, 0.3]  # 横向速度，收窄防极端姿态
             ang_vel_yaw = [0, 0]
-            heading = [-3.14, 3.14]
-
-            # lin_vel_x = [0.15, 1.0]  # min max [m/s]
-            # lin_vel_y = [0.1, 0.1]  # min max [m/s]
-            # ang_vel_yaw = [-0.05, 0.05]    # min max [rad/s]
+            heading = [-3.1415, 3.1415]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
