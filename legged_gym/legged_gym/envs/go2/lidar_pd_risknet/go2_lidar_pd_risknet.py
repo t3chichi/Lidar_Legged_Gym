@@ -98,6 +98,12 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self.last_dist = torch.zeros(
+            self.num_envs,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
         self._consecutive_upgrade_count = torch.zeros(
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
@@ -490,6 +496,8 @@ class Go2LidarPDRiskNet(Go2):
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
         self.last_y[env_ids] = self.base_pos[env_ids, 1]
+        self.last_dist[env_ids] = torch.norm(
+            self.base_pos[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
         if hasattr(self, 'last_last_actions'):
             self.last_last_actions[env_ids] = 0.
         self._update_lidar_history()
@@ -515,6 +523,14 @@ class Go2LidarPDRiskNet(Go2):
         backward = torch.clamp(-step_delta, min=0.0)
         ratio = float(getattr(self.cfg.pd_risknet, "y_backward_penalty_ratio", 0.1))
         return forward - ratio * backward
+
+    def _reward_move_distance(self):
+        dist = torch.norm(self.base_pos[:, :2] - self.env_origins[:, :2], dim=1)
+        delta = dist - self.last_dist
+        self.last_dist[:] = dist
+        forward  = torch.clamp(delta, min=0.0)
+        backward = torch.clamp(-delta, min=0.0)
+        return forward - 0.1 * backward
 
     # --- 对齐论文 Table 5 的奖励机制覆盖 ---
 

@@ -161,10 +161,10 @@ class Terrain:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
 
         elif choice < self.proportions[7]:
-            if hasattr(self.cfg, "corridor_width"):
-                curved_corridor_terrain(terrain, difficulty, self.cfg)
-            else:
-                pillar_field_terrain(terrain, difficulty, self.cfg)
+            curved_corridor_terrain(terrain, difficulty, self.cfg)
+
+        elif choice < self.proportions[8]:
+            pillar_field_terrain(terrain, difficulty, self.cfg)
         
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.)

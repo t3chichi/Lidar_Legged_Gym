@@ -15,7 +15,6 @@ PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
 PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
-# Counts must match the main risknet config (17×11=187) for weight transfer.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
 MEASURED_GRID_X_RANGE = [-0.3, 1.8]
@@ -24,11 +23,14 @@ PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 
-class Go2LidarPDRiskNetCfg(Go2RoughCfg):
+class Go2LidarPillarCfg(Go2RoughCfg):
+    class asset(Go2RoughCfg.asset):
+        terminate_after_contacts_on = []
+
     class init_state(Go2RoughCfg.init_state):
-        pos = [0.0, 0.0, 0.34]  # 出生稍高于目标高度，重力落下自然发现目标
         randomize_rot = True
-        rot_randomization_range = [-3.1415, 3.1415]
+        rot_randomization_range = [-3.14, 3.14]   # 全向随机出生朝向（无切线参考）
+        spawn_offset_range = 0.2                 # 出生点 XY 随机偏移范围 (m)
 
     class pd_risknet:
         enabled = True
@@ -43,7 +45,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.6
         avoid_alpha = 1.5
         avoid_beta = 1.0
-        ray_max_distance = 6.0
+        ray_max_distance = 6.0  # rays 奖励截断距离 (m)
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -52,7 +54,17 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         avoid_iters = 3      # 迭代挑最大轮数
         avoid_gain = 1.1     # 避障速度增益
-        collision_3d = True   # 预训练：3D 全向二值（原版 legged_gym）
+        y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
+        collision_3d = False             # 正式训练：2D 水平连续平方
+
+        # 通道终点奖励
+        goal_enabled = True
+        goal_reward = 10.0
+
+        # 地形课程升降级
+        move_down_ratio = 0.4                 # 降级阈值：forward_dist / goal_dist < 此比例
+        consecutive_upgrade_episodes = 3      # 连续 N 回合到达终点才触发升级
+        consecutive_downgrade_episodes = 3    # 连续 N 回合未达降级阈值才触发降级
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
@@ -60,36 +72,56 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Critic input uses proprio (48) + privileged heights (187).
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         # Anti-flip termination gates to avoid upside-down reward exploitation.
-        enable_fall_termination = False
+        enable_fall_termination = True
         # In body frame, projected_gravity[:, 2] is near -1 when upright and near +1 when upside-down.
         fall_projected_gravity_z_threshold = -0.1
         # Terminate when base height is unrealistically low (meters).
-        fall_base_height_threshold = 0.12
+        fall_base_height_threshold = 0.1
 
     class terrain(Go2RoughCfg.terrain):
-        # True flat terrain for gait pretraining.
-        mesh_type = 'plane'
+        horizontal_scale = 0.1
+        # Keep heights enabled for privileged supervision channel.
         measure_heights = True
         # Grid auto-generated from range + count via linspace in _init_height_points.
         measured_grid_x_range = MEASURED_GRID_X_RANGE
         measured_grid_y_range = MEASURED_GRID_Y_RANGE
         measured_grid_x_count = MEASURED_GRID_X_COUNT
         measured_grid_y_count = MEASURED_GRID_Y_COUNT
+        mesh_type = 'trimesh'
         curriculum = False
+        max_init_terrain_level = 0  # 所有机器人从 level 0 (直线通道) 开始
 
-    class asset(Go2RoughCfg.asset):
-        self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
+        terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 0, 1.0]
+        terrain_length = 15
+        terrain_width = 15
+        num_rows = 4
+        num_cols = 4
+
+        # 柱子参数（pillar_field_terrain 已通过 getattr 读取）
+        pillar_count_min = 30
+        pillar_count_max = 30
+        pillar_size_x_min = 0.40
+        pillar_size_x_max = 0.60
+        pillar_size_y_min = 0.40
+        pillar_size_y_max = 0.60
+        pillar_height_min = 0.60
+        pillar_height_max = 1.00
+        pillar_min_separation = 2.5  
+        pillar_center_clear_radius = 1.6
+        pillar_spawn_radius = 9.0
+        pillar_allow_height_variation = True
+
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
-        heading_p_gain = 1.0       # P 增益
-        resampling_time = 4.
+        heading_p_gain = 1.0     # P 增益
+        resampling_time = 2.
+        curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.2, 1.0]   # 前向速度
-            lin_vel_y = [-0.3, 0.3]  # 横向速度，收窄防极端姿态
-            ang_vel_yaw = [0, 0]
-            heading = [-3.1415, 3.1415]
-            # heading = [0, 0]
+            lin_vel_x = [0.4, 0.8]  # min max [m/s]
+            lin_vel_y = [-0.0, 0.0]  # min max [m/s]
+            ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
+            heading = [-3.14, 3.14]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -111,50 +143,34 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class rewards(Go2RoughCfg.rewards):
         base_height_target = 0.34
-        class scales(Go2RoughCfg.rewards.scales):
+        class scales:
             # Paper main rewards.
-            vel_avoid = 0 # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
-            rays = 0  # 距离最大化奖励：鼓励与障碍保持更大安全间距
-            
-            lin_vel_z = 0 # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
-            feet_stumble = 0  # 惩罚脚部绊碰（足端受到异常横向冲击）
-            collision = 0  # 惩罚机体/连杆非期望碰撞
-            dof_pos_limits = 0  # 惩罚关节接近或超过位置限位
-            torques = 0  # 惩罚关节力矩过大，降低能耗和电机负担
-            dof_vel = 0  # 惩罚关节速度过大，抑制过激动作
-            dof_acc = 0  # 惩罚关节加速度过大，提升动作平滑性
-            action_rate = 0  # 一阶动作平滑惩罚：限制相邻时刻动作变化
-            action_rate2 = 0  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
+            vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
+            rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
+            # Auxiliary rewards from appendix Table 5.
+            lin_vel_z = -3.0e-4  # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
+            feet_stumble = -2.0e-2  # 惩罚脚部绊碰（足端受到异常横向冲击）
+            collision = -2.0e-2  # 连续 ||Force_xy||²（对齐论文 “连杆碰撞”）
+            dof_pos_limits = -0.2  # 二值越界指示（对齐论文 1_{q>q_max or q<q_min}）
+            torques = -1.0e-6  # 惩罚关节力矩过大，降低能耗和电机负担
+            dof_vel = -1.0e-6  # 惩罚关节速度过大，抑制过激动作
+            dof_acc = -2.5e-7  # 惩罚关节加速度过大，提升动作平滑性
+            action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
+            action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            #flat_reward
-            termination = -0.0  # 终止惩罚：在环境终止时给予负奖励，避免策略利用终止状态
-            tracking_lin_vel = 1.0  # 线速度跟踪奖励：鼓励按指令线速度前进
-            tracking_ang_vel = 0.5  # 角速度跟踪奖励：鼓励按指令角速度跟踪朝向
-            lin_vel_z = -2.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
-            ang_vel_xy = -0.05  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
-            orientation = -0.  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
-            torques = -0.00001  # 关节力矩惩罚：减少能耗并限制电机过载
-            dof_vel = -0.  # 关节速度惩罚：抑制关节速度过大，避免剧烈或不稳定动作
-            dof_acc = -2.5e-7  # 关节加速度惩罚：提升动作平滑性，减少瞬时加速度带来的冲击
-            base_height = -0.  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
-            feet_air_time = 1.0  # 足端离地时间权重：影响步态周期与接触模式，鼓励合理的离地时间
-            collision = -1.  # 碰撞惩罚：对机体或连杆发生非期望碰撞时给予负奖励
-            feet_stumble = -0.0  # 足端绊碰惩罚：惩罚脚部异常冲击或失稳事件
-            action_rate = -0.01  # 动作变化率惩罚：限制相邻动作变化，平滑控制信号
-            stand_still = -0.  # 静止惩罚：惩罚长时间静止，防止策略不移动以“获利”
+            tracking_lin_vel = 5.0e-1   
+            tracking_ang_vel = 3.0e-1   
+            feet_air_time = 1.0      
+            gait_2_step = -5.0e-1    
+            ang_vel_xy = -5.0e-2
+            base_height = -2.0
+            orientation = -0.0
+            move_distance = 50.0  # pillar 地形：鼓励远离出生点
+            #override
+            # lin_vel_z = -1.0e-3
+      
 
-            # Overrides
-            orientation = -5.0  # 覆盖的姿态惩罚权重：更强烈地惩罚姿态偏差
-            torques = -0.000025  # 覆盖的力矩惩罚权重：更严格地限制关节力矩
-            feet_air_time = 1.0  # 覆盖的足端离地时间权重：保持/强调期望步态空中时间
-            ang_vel_xy = -0.1
-            base_height = -5.0
-            # feet_contact_forces = -0.01
-            # gait_scheduler = -3
-
-            gait_2_step = -1.0  # 步态相关惩罚/奖励：用于鼓励或抑制特定步态（如两步周期）
-            
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
         class obs_scales(Go2RoughCfg.normalization.obs_scales):
@@ -162,13 +178,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.5, 1.5]
+        friction_range = [0.5, 1.2]
         randomize_base_mass = True
         added_mass_range = [-1.0, 1.0]
 
         # Paper-specific LiDAR randomization.
-        lidar_point_mask_ratio = 0.05
-        lidar_point_mask_value_range = [2.0, 10.0]
+        lidar_point_mask_ratio = 0.02
+        lidar_point_mask_value_range = [0, 0.3]
         lidar_distance_noise_ratio = 0.02
 
         # Remaining parameters are declared for parity and can be consumed by future hooks.
@@ -180,8 +196,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         gravity_offset_range = [-1.0, 1.0]
         proprio_delay_range = [0.005, 0.045]
 
+    class sim(Go2RoughCfg.sim):
+        class physx(Go2RoughCfg.sim.physx):
+            num_threads = 10  # AutoDL使用，4096环境(原10线程)
+            max_gpu_contact_pairs = 2**25  # 2**24 -> needed for 8000 envs and more
+            default_buffer_size_multiplier = 10
 
-class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
+        
+class Go2LidarPillarCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
         actor_hidden_dims = [1024, 512, 256, 128]
         critic_hidden_dims = [512, 256, 128]
@@ -218,6 +240,6 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
-        experiment_name = "go2_pd_pretrain"
+        experiment_name = "go2_lidar_pd_risknet"
         run_name = ""
-        max_iterations = 1000
+        max_iterations = 4000

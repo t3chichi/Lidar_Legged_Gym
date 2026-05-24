@@ -66,6 +66,9 @@ from .go2.lidar_pd_risknet.go2_pd_pretrain_config import (
     Go2LidarPDRiskNetCfg as Go2LidarPDPretrainCfg,
     Go2LidarPDRiskNetCfgPPO as Go2LidarPDPretrainCfgPPO,
 )
+from .go2.lidar_pd_risknet.go2_lidar_pillar_config import (
+    Go2LidarPillarCfg, Go2LidarPillarCfgPPO,
+)
 
 from .cassie.cassie import Cassie
 from .cassie.cassie_config import CassieRoughCfg, CassieRoughCfgPPO
@@ -173,6 +176,8 @@ task_registry.register("go2_lidar_pd_risknet", Go2LidarPDRiskNet,
                        Go2LidarPDRiskNetCfg(), Go2LidarPDRiskNetCfgPPO())
 task_registry.register("go2_pd_pretrain", Go2LidarPDRiskNet,
                        Go2LidarPDPretrainCfg(), Go2LidarPDPretrainCfgPPO())
+task_registry.register("go2_lidar_pillar", Go2LidarPDRiskNet,
+                       Go2LidarPillarCfg(), Go2LidarPillarCfgPPO())
 
 task_registry.register("a1", LeggedRobot, A1RoughCfg(), A1RoughCfgPPO())
 task_registry.register("cassie", Cassie, CassieRoughCfg(), CassieRoughCfgPPO())
