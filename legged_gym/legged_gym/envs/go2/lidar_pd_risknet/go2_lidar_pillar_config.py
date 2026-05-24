@@ -240,6 +240,6 @@ class Go2LidarPillarCfgPPO(Go2RoughCfgPPO):
         policy_class_name = "PDRiskNetActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
-        experiment_name = "go2_lidar_pd_risknet"
+        experiment_name = "go2_lidar_pillar"
         run_name = ""
         max_iterations = 4000
