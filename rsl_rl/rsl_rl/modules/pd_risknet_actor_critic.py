@@ -120,32 +120,15 @@ class PDRiskNetActorCritic(nn.Module):
 
         act_fn = resolve_nn_activation(activation)
 
-        self.proximal_point_encoder = nn.Sequential(
-            nn.Linear(3, 64),
-            act_fn,
-            nn.Linear(64, 64),
-            act_fn,
-        )
-        self.distal_point_encoder = nn.Sequential(
-            nn.Linear(3, 64),
-            act_fn,
-            nn.Linear(64, 64),
-            act_fn,
-        )
-
-        self.proximal_gru = nn.GRU(input_size=64, hidden_size=self.proximal_feature_dim, batch_first=True)
-        self.distal_spatial_gru = nn.GRU(input_size=64, hidden_size=self.distal_feature_dim, batch_first=True)
-        self.proximal_memory_a = Memory(
-            self.proximal_feature_dim,
-            type="gru",
-            num_layers=1,
+        self.proximal_gru = nn.GRU(
+            input_size=3,
             hidden_size=self.proximal_feature_dim,
+            batch_first=True,
         )
-        self.distal_memory_a = Memory(
-            self.distal_feature_dim,
-            type="gru",
-            num_layers=1,
+        self.distal_gru = nn.GRU(
+            input_size=3,
             hidden_size=self.distal_feature_dim,
+            batch_first=True,
         )
 
         actor_input_dim = self.proprio_obs_dim + self.proximal_feature_dim + self.distal_feature_dim
@@ -174,6 +157,7 @@ class PDRiskNetActorCritic(nn.Module):
         self._warned_missing_prox_hidden = False
         self._warned_missing_dist_hidden = False
         self._sampling_plan_ready = False
+        self.distal_gru_hidden: torch.Tensor | None = None
         self.register_buffer("_proximal_indices", torch.empty(0, dtype=torch.long), persistent=False)
         self.register_buffer("_distal_sorted_indices", torch.empty(0, dtype=torch.long), persistent=False)
         self.register_buffer("_distal_bin_ids", torch.empty(0, dtype=torch.long), persistent=False)
@@ -202,25 +186,22 @@ class PDRiskNetActorCritic(nn.Module):
         return self.distribution.entropy().sum(dim=-1)
 
     def reset(self, dones=None):
-        self.proximal_memory_a.reset(dones)
-        self.distal_memory_a.reset(dones)
+        if self.distal_gru_hidden is not None:
+            if dones is not None:
+                mask = dones.bool()
+                if mask.any():
+                    self.distal_gru_hidden[:, mask, :] = 0.0
+            else:
+                self.distal_gru_hidden = None
         self._cached_actor_latent = None
     
     def get_hidden_states(self):
-        prox_hidden = self.proximal_memory_a.hidden_states
-        dist_hidden = self.distal_memory_a.hidden_states
-
-        if prox_hidden is None and dist_hidden is None:
+        dist_hidden = self.distal_gru_hidden
+        if dist_hidden is None:
             return (None, None)
-        # 若其中一个为 None，则用另一个的 batch/device 补全
-        if prox_hidden is None:
-            prox_hidden = torch.zeros((1, dist_hidden.shape[1], self.proximal_feature_dim), device=dist_hidden.device)
-        elif dist_hidden is None:
-            dist_hidden = torch.zeros((1, prox_hidden.shape[1], self.distal_feature_dim), device=prox_hidden.device)
-
-        actor_hidden_states = (prox_hidden, dist_hidden)
-        critic_hidden_states = (prox_hidden, dist_hidden)
-
+        prox_pad = torch.zeros_like(dist_hidden)
+        actor_hidden_states = (prox_pad, dist_hidden)
+        critic_hidden_states = (prox_pad, dist_hidden)
         return actor_hidden_states, critic_hidden_states
 
     def _split_actor_hidden_states(self, hidden_states):
