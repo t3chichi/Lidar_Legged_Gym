@@ -7,7 +7,6 @@ import torch.nn as nn
 from torch.distributions import Normal
 from torch.utils.checkpoint import checkpoint
 
-from rsl_rl.networks import Memory
 from rsl_rl.utils import resolve_nn_activation, unpad_trajectories
 
 
@@ -154,8 +153,6 @@ class PDRiskNetActorCritic(nn.Module):
         self._cached_proximal_feature = None
         self._cached_actor_latent = None
         # self._critic_hidden_state = None
-        self._warned_missing_prox_hidden = False
-        self._warned_missing_dist_hidden = False
         self._sampling_plan_ready = False
         self.distal_gru_hidden: torch.Tensor | None = None
         self.register_buffer("_proximal_indices", torch.empty(0, dtype=torch.long), persistent=False)
@@ -213,95 +210,6 @@ class PDRiskNetActorCritic(nn.Module):
             if len(hidden_states) == 1:
                 return hidden_states[0], None
         return hidden_states, None
-
-    def _warn_missing_hidden_once(self, branch: str):
-        if branch == "prox" and (not self._warned_missing_prox_hidden):
-            print("[PDRiskNetActorCritic] Missing proximal hidden states in update; using zero initialization.")
-            self._warned_missing_prox_hidden = True
-        if branch == "dist" and (not self._warned_missing_dist_hidden):
-            print("[PDRiskNetActorCritic] Missing distal hidden states in update; using zero initialization.")
-            self._warned_missing_dist_hidden = True
-
-    def _init_actor_hidden_like(self, frame_feat: torch.Tensor, feat_dim: int) -> torch.Tensor:
-        if frame_feat.dim() == 4:
-            batch_size = frame_feat.shape[1]
-        elif frame_feat.dim() >= 2:
-            batch_size = frame_feat.shape[0]
-        else:
-            raise ValueError(f"Unsupported frame feature rank for hidden initialization: {frame_feat.dim()}")
-        return torch.zeros((1, batch_size, feat_dim), device=frame_feat.device, dtype=frame_feat.dtype)
-
-    def _frame_window_to_seq(self, frame_feat: torch.Tensor):
-        """Convert frame/window feature tensor into (seq,batch,feat) recurrent input.
-
-        Accepted layouts:
-        - (B, F) -> (1, B, F), grouped=False
-        - (B, T_win, F) -> (T_win, B, F), grouped=True with per-step window T_win
-        - (T_env, B, T_win, F) -> (T_env*T_win, B, F), grouped=True with env-step grouping
-        """
-        if frame_feat.dim() == 2:
-            b, feat_dim = frame_feat.shape
-            seq = frame_feat.unsqueeze(0)
-            return seq, False, 1, b, feat_dim
-        if frame_feat.dim() == 3:
-            b, t_win, feat_dim = frame_feat.shape
-            seq = frame_feat.permute(1, 0, 2)
-            return seq, True, t_win, b, feat_dim
-        if frame_feat.dim() == 4:
-            t_env, b, t_win, feat_dim = frame_feat.shape
-            seq = frame_feat.permute(0, 2, 1, 3).reshape(t_env * t_win, b, feat_dim)
-            return seq, True, t_win, b, feat_dim
-        raise ValueError(f"Unsupported frame feature rank: {frame_feat.dim()}")
-
-    def _collapse_window_output(self, seq_out: torch.Tensor, grouped: bool, window_len: int, batch_size: int):
-        if not grouped:
-            return seq_out[-1]
-        if seq_out.shape[0] % window_len != 0:
-            raise ValueError(
-                f"Sequence length {seq_out.shape[0]} is not divisible by window length {window_len}."
-            )
-        env_steps = seq_out.shape[0] // window_len
-        feat_dim = seq_out.shape[-1]
-        feat = seq_out.reshape(env_steps, window_len, batch_size, feat_dim)[:, -1, :, :]
-        if env_steps == 1:
-            return feat.squeeze(0)
-        return feat
-
-    def _run_actor_memory(
-        self,
-        memory: Memory,
-        frame_feat: torch.Tensor,
-        masks: torch.Tensor | None,
-        hidden_states: torch.Tensor | None,
-        feat_dim: int,
-        branch_name: str,
-    ) -> torch.Tensor:
-        # 训练序列模式特判
-        if masks is not None and frame_feat.dim() == 3:
-            seq_in = frame_feat                 # (T, B, F)
-            grouped = False
-            window_len = 1
-            batch_size = frame_feat.shape[1]
-        # 推理分支单步序列特判：形状为 (1, B, F) 且 masks=None
-        elif masks is None and frame_feat.dim() == 3 and frame_feat.shape[0] == 1:
-            seq_in = frame_feat                 # (1, B, F)
-            grouped = False
-            window_len = 1
-            batch_size = frame_feat.shape[1]
-        else:
-            seq_in, grouped, window_len, batch_size, _ = self._frame_window_to_seq(frame_feat)
-
-        if masks is not None:
-            if hidden_states is None:
-                self._warn_missing_hidden_once(branch_name)
-                hidden_states = self._init_actor_hidden_like(frame_feat, feat_dim)
-            seq_out, _ = memory.rnn(seq_in, hidden_states)   # (T, B, F)
-            # 训练分支直接返回序列，不再压缩时间维，由外部处理 unpad
-            return seq_out
-
-        # 推理分支
-        seq_out, memory.hidden_states = memory.rnn(seq_in, memory.hidden_states)
-        return self._collapse_window_output(seq_out, grouped, window_len, batch_size)
 
     def _split_obs(self, observations: torch.Tensor):
         # 观测布局：[proprio (48)] + [single frame point cloud (N*3)]
