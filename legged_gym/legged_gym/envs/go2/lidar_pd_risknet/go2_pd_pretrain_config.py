@@ -83,10 +83,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_p_gain = 1.0       # P 增益
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0, 0]   # 预训练：静止
-            lin_vel_y = [0, 0]  # 横向速度，收窄防极端姿态
+            lin_vel_x = [-1, 1]   # 预训练：静止
+            lin_vel_y = [-0.5, 0.5]  # 横向速度，收窄防极端姿态
             ang_vel_yaw = [0, 0]
-            heading = [0, 0]
+            heading = [-3.14, 3.14]
             # heading = [0, 0]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
