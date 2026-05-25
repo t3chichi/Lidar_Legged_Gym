@@ -251,3 +251,38 @@ def test_distal_mask_empty_raises():
                 f"No distal rays found: split_theta_deg={-10.0:.1f}° "
                 f"but vertical FOV min={0.0:.1f}°. "
                 f"Lower split_theta_deg or decrease vertical_fov_deg_min.")
+
+
+def test_v_avoid_paper_formula():
+    """Paper formula: V_j = exp(-d_j * alpha) * (-dir_j) if d_j < thresh."""
+    import torch
+    import math
+
+    alpha = 1.5
+    thresh = 1.0
+    n_sec = 36
+    sec_size = 2.0 * math.pi / n_sec
+
+    # Simulate 2 envs: env0 has close obstacle at sector 2 (0.5m), env1 is clear
+    inf = torch.tensor(1e9)
+    min_dist = torch.tensor([
+        [inf, inf, 0.5, inf, inf] + [inf] * (n_sec - 5),   # env0
+        [inf] * n_sec,                                        # env1: all clear
+    ])
+
+    active = min_dist < thresh
+    mag = torch.exp(-min_dist * alpha) * active.float()
+    sec_centers = torch.linspace(-math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec)
+    away_dirs = torch.stack((-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1)
+
+    v_avoid = torch.sum(away_dirs.unsqueeze(0) * mag.unsqueeze(-1), dim=1)
+
+    # env1: zero avoidance
+    assert torch.all(v_avoid[1] == 0.0)
+
+    # env0: non-zero, pointing away from sector 2
+    assert v_avoid[0].norm() > 0.0
+
+    # Magnitude check: |V| = exp(-0.5 * 1.5) ≈ 0.4724 (single active sector)
+    expected_mag = math.exp(-0.5 * 1.5)
+    assert abs(v_avoid[0].norm().item() - expected_mag) < 1e-4
