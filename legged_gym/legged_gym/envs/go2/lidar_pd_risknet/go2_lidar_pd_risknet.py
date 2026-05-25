@@ -315,58 +315,34 @@ class Go2LidarPDRiskNet(Go2):
         sec_size = 2.0 * math.pi / n_sec
 
         pts = self.lidar_points_base[..., :2]
-        # 使用仅经地面滤除、未经域随机化的干净距离
         dist = self.avoid_distances
         angles = torch.atan2(pts[..., 1], pts[..., 0])
         sec_ids = torch.floor((angles + math.pi) / sec_size).long().clamp(min=0, max=n_sec - 1)
 
-        max_dist = float(cfg.ray_max_distance)
-        # 用一个很大的数代替无效点，便于后续取分位数时被排到末尾
+        # Per-sector minimum distance. Non-sector points are set to a large
+        # sentinel so they sort to the end, making min() correct.
         inf = torch.full_like(dist, 1.0e9)
-
-        # 预先计算每个扇区内有效点的数量（距离小于 max_dist 的点）
-        valid_mask = dist < max_dist
-
         min_dist_per_sec = []
         for sec in range(n_sec):
-            sec_mask = sec_ids == sec
-            # 只考虑该扇区内的点，非扇区点置为 inf
-            sec_vals = torch.where(sec_mask, dist, inf)
+            sec_vals = torch.where(sec_ids == sec, dist, inf)
+            sec_min = torch.min(sec_vals, dim=1).values  # (num_envs,)
+            min_dist_per_sec.append(sec_min)
+        min_dist_per_sec = torch.stack(min_dist_per_sec, dim=1)  # (num_envs, n_sec)
 
-            # 该扇区内有效点数量
-            valid_in_sec = (sec_mask & valid_mask).sum(dim=1)  # [num_envs]
-
-            # 取第10%分位数（至少第1个）
-            k_per_env = torch.clamp((valid_in_sec * 0.10).int(), min=1)  # [num_envs]
-
-            # 排序
-            sorted_vals, _ = torch.sort(sec_vals, dim=1)  # [num_envs, num_points]
-
-            # 确保索引为 int64，且不越界
-            k_per_env_clamped = k_per_env.clamp(max=sorted_vals.shape[1]).to(torch.int64)
-            idx = (k_per_env_clamped - 1).unsqueeze(1).to(torch.int64)  # [num_envs, 1]
-
-            sec_q10 = sorted_vals.gather(1, idx).squeeze(1)  # [num_envs]
-            min_dist_per_sec.append(sec_q10)
-
-        min_dist_per_sec = torch.stack(min_dist_per_sec, dim=1)
-
-        sec_centers = torch.linspace(-math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec, device=self.device)
-        away_dirs = torch.stack((-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1).unsqueeze(0)
-
+        # Active sectors: d < threshold => exp(-d * alpha); inactive => 0
         active = min_dist_per_sec < float(cfg.avoid_distance_thresh)
         mag = torch.exp(-min_dist_per_sec * float(cfg.avoid_alpha)) * active.float()
-        sec_dirs = -away_dirs
-        v_combined = self.commands[:, :2]
-        self.v_avoid = torch.zeros(self.num_envs, 2, device=self.device)
-        for _ in range(int(cfg.avoid_iters)):
-            v_proj = torch.sum(v_combined.unsqueeze(1) * sec_dirs, dim=2)
-            v_proj = torch.clamp(v_proj, min=0.0)
-            v_sec = float(cfg.avoid_gain) * away_dirs * (v_proj * mag).unsqueeze(-1)
-            mag2 = torch.sum(torch.square(v_sec), dim=-1)
-            max_idx = torch.argmax(mag2, dim=-1)
-            self.v_avoid += v_sec[torch.arange(self.num_envs), max_idx]
-            v_combined = self.commands[:, :2] + self.v_avoid
+
+        # Sector center directions; avoidance pushes AWAY from each sector
+        sec_centers = torch.linspace(
+            -math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec, device=self.device
+        )
+        away_dirs = torch.stack(
+            (-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1
+        ).unsqueeze(0)  # (1, n_sec, 2)
+
+        # Vector sum over all sectors
+        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1)  # (num_envs, 2)
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
