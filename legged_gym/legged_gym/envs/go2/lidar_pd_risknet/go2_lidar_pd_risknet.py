@@ -125,7 +125,7 @@ class Go2LidarPDRiskNet(Go2):
         elev_rad = torch.linspace(v_max_rad, v_min_rad, num_elevation, device=self.device)
         distal_lines = elev_rad < split_rad  # (num_elevation,)
         distal_mask_2d = distal_lines.unsqueeze(1).expand(num_elevation, num_azimuth)
-        self._distal_mask = distal_mask_2d.reshape(-1)  # (num_lidar_points,)
+        self._distal_mask = distal_mask_2d.contiguous().reshape(-1)  # (num_lidar_points,)
 
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
