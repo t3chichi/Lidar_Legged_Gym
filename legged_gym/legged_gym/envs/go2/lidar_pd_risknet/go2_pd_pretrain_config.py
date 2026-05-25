@@ -9,16 +9,16 @@ PD_SPHERICAL_ELEVATION = 24
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 256
-PD_DISTAL_POINTS = 80
+PD_DISTAL_POINTS = 96
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
-PD_THETA_DEG = 24.0
+PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 # Counts must match the main risknet config (17×11=187) for weight transfer.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [-0.2, 1.8]
+MEASURED_GRID_X_RANGE = [-0.1, 2.1]
 MEASURED_GRID_Y_RANGE = [-0.75, 0.75]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
@@ -85,10 +85,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_p_gain = 1.0       # P 增益
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [-1.0, 1.0]   # 前向速度
-            lin_vel_y = [-0.5, 0.5]  # 横向速度，收窄防极端姿态
+            lin_vel_x = [0, 0]   # 预训练：静止
+            lin_vel_y = [0, 0]  # 横向速度，收窄防极端姿态
             ang_vel_yaw = [0, 0]
-            heading = [-3.1415, 3.1415]
+            heading = [0, 0]
             # heading = [0, 0]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):

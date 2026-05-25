@@ -268,14 +268,15 @@ class PDRiskNetActorCritic(nn.Module):
         ref_idx = torch.randint(0, lidar_hist.shape[0], (1,), device=lidar_hist.device).item()
         ref_points = lidar_hist[ref_idx, -1]
 
-        # Rotate base-frame points back to sensor frame for correct
+        # Transform base-frame points back to sensor frame for correct
         # proximal/distal split.  The sensor may be mounted with a large
         # offset (e.g. upside-down), which would make a base-frame split
         # map most points to the wrong side of theta_threshold.
+        t = self._sensor_translation.to(device=lidar_hist.device, dtype=lidar_hist.dtype)
+        ref_points = ref_points - t
         if self._sensor_conj is not None:
             q = self._sensor_conj.to(device=lidar_hist.device, dtype=lidar_hist.dtype)
-            t = self._sensor_translation.to(device=lidar_hist.device, dtype=lidar_hist.dtype)
-            ref_points = _quat_apply(q, ref_points - t)
+            ref_points = _quat_apply(q, ref_points)
 
         x = ref_points[:, 0]
         y = ref_points[:, 1]
@@ -472,12 +473,11 @@ class PDRiskNetActorCritic(nn.Module):
         return out, final_hidden
 
     def _sort_by_spherical(self, points):
+        t = self._sensor_translation.to(device=points.device, dtype=points.dtype)
+        pts_sensor = points - t
         if self._sensor_conj is not None:
             q = self._sensor_conj.to(device=points.device, dtype=points.dtype)
-            t = self._sensor_translation.to(device=points.device, dtype=points.dtype)
-            pts_sensor = _quat_apply(q, points - t)
-        else:
-            pts_sensor = points
+            pts_sensor = _quat_apply(q, pts_sensor)
         x = pts_sensor[..., 0]
         y = pts_sensor[..., 1]
         z = pts_sensor[..., 2]

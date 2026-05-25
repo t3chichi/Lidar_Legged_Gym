@@ -707,13 +707,13 @@ class OnPolicyRunner:
         if load_optimizer and resumed_training:
             try:
                 self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
-            except ValueError as e:
+            except (ValueError, RuntimeError) as e:
                 print(f"[Runner] Optimizer state mismatch, skipping (Adam will re-initialize): {e}")
             # -- RND optimizer if used
             if self.alg.rnd:
                 try:
                     self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
-                except ValueError as e:
+                except (ValueError, RuntimeError) as e:
                     print(f"[Runner] RND optimizer state mismatch, skipping: {e}")
         # -- load current learning iteration
         if resumed_training:
