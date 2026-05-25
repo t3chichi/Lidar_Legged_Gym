@@ -17,7 +17,7 @@ PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [-0.2, 1.8]
+MEASURED_GRID_X_RANGE = [-0.1, 2.1]
 MEASURED_GRID_Y_RANGE = [-0.75, 0.75]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
@@ -41,8 +41,8 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = PD_THETA_DEG
 
-        n_sectors = 24
-        avoid_distance_thresh = 1.6
+        n_sectors = 36
+        avoid_distance_thresh = 1.0
         avoid_alpha = 1.5
         avoid_beta = 1.0
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)，对齐 raycaster.max_distance
@@ -52,8 +52,6 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_iters = 3      # 迭代挑最大轮数
-        avoid_gain = 1.1     # 避障速度增益
         y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
         collision_3d = False             # 正式训练：2D 水平连续平方
 

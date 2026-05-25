@@ -9,11 +9,11 @@ PD_SPHERICAL_ELEVATION = 24
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 256
-PD_DISTAL_POINTS = 80
+PD_DISTAL_POINTS = 96
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
-PD_THETA_DEG = 24.0
+PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
@@ -52,8 +52,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_iters = 3      # 迭代挑最大轮数
-        avoid_gain = 1.1     # 避障速度增益
         y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
         collision_3d = False             # 正式训练：2D 水平连续平方
 

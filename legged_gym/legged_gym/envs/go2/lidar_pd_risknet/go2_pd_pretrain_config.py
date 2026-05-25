@@ -50,8 +50,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        avoid_iters = 3      # 迭代挑最大轮数
-        avoid_gain = 1.1     # 避障速度增益
         collision_3d = True   # 预训练：3D 全向二值（原版 legged_gym）
 
     class env(Go2RoughCfg.env):
