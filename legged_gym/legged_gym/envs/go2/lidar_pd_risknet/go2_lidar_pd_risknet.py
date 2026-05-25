@@ -664,7 +664,7 @@ class Go2LidarPDRiskNet(Go2):
 
         # Downsample to ~256 points total for performance.
         num_pts = pts_base.shape[0]
-        max_draw = min(256, num_pts)
+        max_draw = min(864, num_pts)
         step = max(1, num_pts // max_draw)
 
         # Draw proximal points (yellow)
