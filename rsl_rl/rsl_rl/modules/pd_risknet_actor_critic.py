@@ -437,50 +437,59 @@ class PDRiskNetActorCritic(nn.Module):
         return prox_points, dist_points
 
 
-    def _build_replay_frame_features(self, lidar_points_seq: torch.Tensor, masks: torch.Tensor | None):
-        if lidar_points_seq.dim() != 4:
-            raise ValueError(f"Expected lidar_points_seq shape (T, B, N, 3), got rank {lidar_points_seq.dim()}")
+    def _build_replay_frame_features(self, lidar_points_seq: torch.Tensor, masks: torch.Tensor | None,
+                                      init_dist_hidden: torch.Tensor | None = None):
+        """Build per-frame proximal and distal features from training sequence.
 
-        seq_len, batch_size, num_points, _ = lidar_points_seq.shape
+        Proximal: process each frame independently through proximal_gru (zero-init each).
+        Distal: process frames sequentially through distal_gru (hidden state carries across frames).
+
+        Args:
+            lidar_points_seq: (T, B, N, 3) point cloud sequence over env steps.
+            masks: (T, B) validity masks.
+            init_dist_hidden: (1, B, 64) initial distal GRU hidden state from PPO runner.
+        Returns:
+            prox_feat_seq: (T, B, 187), dist_feat_seq: (T, B, 64)
+        """
+        T_seq, B, N, _ = lidar_points_seq.shape
 
         if masks is not None:
             frame_any_valid = masks.any(dim=1)
             valid_frames = frame_any_valid.nonzero(as_tuple=False)
-            effective_len = valid_frames[-1].item() + 1 if len(valid_frames) > 0 else seq_len
+            effective_len = valid_frames[-1].item() + 1 if len(valid_frames) > 0 else T_seq
         else:
-            effective_len = seq_len
+            effective_len = T_seq
 
-        prox_feat_seq = []
-        dist_feat_seq = []
+        prox_feat_list = []
+        dist_feat_list = []
+        dist_hidden = init_dist_hidden  # from PPO runner's stored hidden state
 
         for t in range(effective_len):
-            # 获取当前帧点云 [B, N, 3]
-            points_t = lidar_points_seq[t]
-
-            # 对当前帧进行采样、排序，得到近端和远端点云 [B, prox_points, 3] 和 [B, dist_points, 3]
+            points_t = lidar_points_seq[t]  # (B, N, 3)
             prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(points_t)
 
-            # 空间编码：需要将单帧点云扩展一个时间维度，因为现有编码函数期望输入 [B, T, points, 3]
-            # 这里 T=1
-            prox_points_t = prox_points_t.unsqueeze(1)  # [B, 1, prox_points, 3]
-            dist_points_t = dist_points_t.unsqueeze(1)  # [B, 1, dist_points, 3]
+            # Proximal: single-frame, zero-init per call
+            prox_feat_t = self._encode_proximal_points_chunked(
+                prox_points_t.unsqueeze(1)
+            ).squeeze(1)  # (B, 187)
 
-            # 编码得到空间特征 [B, 1, feature_dim]，然后去掉时间维
-            prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
-            dist_feat_t, _ = self._encode_distal_points_chunked(dist_points_t)
-            dist_feat_t = dist_feat_t.squeeze(1)  # [B, distal_feature_dim]
+            # Distal: hidden carries across frames
+            dist_feat_t, dist_hidden = self._encode_distal_points_chunked(
+                dist_points_t.unsqueeze(1), dist_hidden
+            )
+            dist_feat_t = dist_feat_t.squeeze(1)  # (B, 64)
 
-            prox_feat_seq.append(prox_feat_t)
-            dist_feat_seq.append(dist_feat_t)
+            prox_feat_list.append(prox_feat_t)
+            dist_feat_list.append(dist_feat_t)
 
-        # 堆叠为序列 [T, B, F]；若跳过了纯 padding 尾部则补零以维持 seq_len
-        prox_feat_seq = torch.stack(prox_feat_seq, dim=0)
-        dist_feat_seq = torch.stack(dist_feat_seq, dim=0)
-        if effective_len < seq_len:
-            pad_len = seq_len - effective_len
-            z_prox = torch.zeros(pad_len, batch_size, self.proximal_feature_dim,
+        prox_feat_seq = torch.stack(prox_feat_list, dim=0)  # (T, B, 187)
+        dist_feat_seq = torch.stack(dist_feat_list, dim=0)  # (T, B, 64)
+
+        if effective_len < T_seq:
+            pad_len = T_seq - effective_len
+            z_prox = torch.zeros(pad_len, B, self.proximal_feature_dim,
                                  device=prox_feat_seq.device, dtype=prox_feat_seq.dtype)
-            z_dist = torch.zeros(pad_len, batch_size, self.distal_feature_dim,
+            z_dist = torch.zeros(pad_len, B, self.distal_feature_dim,
                                  device=dist_feat_seq.device, dtype=dist_feat_seq.dtype)
             prox_feat_seq = torch.cat([prox_feat_seq, z_prox], dim=0)
             dist_feat_seq = torch.cat([dist_feat_seq, z_dist], dim=0)
@@ -555,25 +564,29 @@ class PDRiskNetActorCritic(nn.Module):
         order_exp = order.unsqueeze(-1).expand_as(points)
         return torch.gather(points, dim=2, index=order_exp)
 
-    def _encode_perception(self, observations: torch.Tensor, masks: torch.Tensor | None = None):
+    def _encode_perception(self, observations: torch.Tensor, masks: torch.Tensor | None = None,
+                           init_dist_hidden: torch.Tensor | None = None):
+        """Split observations and encode LiDAR into frame features.
+
+        For 2D inference: returns (proprio, prox_feat, dist_points).
+          Distal encoding deferred to _build_actor_latent for hidden-state management.
+        For 3D training: returns (proprio, prox_feat_seq, dist_feat_seq).
+        """
         proprio, lidar_frame = self._split_obs(observations)
 
         if observations.dim() == 2:
-            # 推理/采样：仅处理当前帧，不维护点云缓存
+            # Inference: sample, sort, encode proximal; return raw distal points.
             prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(lidar_frame)
-            prox_points_t = prox_points_t.unsqueeze(1)  # [B, 1, prox_points, 3]
-            dist_points_t = dist_points_t.unsqueeze(1)  # [B, 1, dist_points, 3]
-            prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
-            dist_feat_t, _ = self._encode_distal_points_chunked(dist_points_t)
-            dist_feat_t = dist_feat_t.squeeze(1)  # [B, distal_feature_dim]
-            prox_frame_feat = prox_feat_t.unsqueeze(0)   # [1, B, F]
-            dist_frame_feat = dist_feat_t.unsqueeze(0)   # [1, B, F]
-            return proprio, prox_frame_feat, dist_frame_feat
+            prox_feat_t = self._encode_proximal_points_chunked(
+                prox_points_t.unsqueeze(1)
+            ).squeeze(1)  # (B, 187)
+            return proprio, prox_feat_t, dist_points_t
 
         elif observations.dim() == 3:
-            # 训练更新：lidar_frame 形状为 (T, B, N, 3)
-            # 返回 [T, B, F] 的特征序列
-            prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(lidar_frame, masks)
+            # Training: build full per-frame feature sequences.
+            prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(
+                lidar_frame, masks, init_dist_hidden=init_dist_hidden
+            )
             return proprio, prox_frame_feat, dist_frame_feat
 
         else:
@@ -585,52 +598,29 @@ class PDRiskNetActorCritic(nn.Module):
         masks: torch.Tensor | None = None,
         hidden_states: torch.Tensor | tuple[torch.Tensor, ...] | None = None,
     ):
-        proprio, prox_frame_feat, dist_frame_feat = self._encode_perception(observations, masks=masks)
-        prox_hidden_states, dist_hidden_states = self._split_actor_hidden_states(hidden_states)
+        _, dist_hidden_states = self._split_actor_hidden_states(hidden_states)
 
         if masks is not None:
-            # 训练分支：保留时间维度，之后统一展平
-            prox_feat = self._run_actor_memory(
-                self.proximal_memory_a,
-                prox_frame_feat,
-                masks,
-                prox_hidden_states,
-                self.proximal_feature_dim,
-                "prox",
-            )  # (T, B, F)
-            dist_feat = self._run_actor_memory(
-                self.distal_memory_a,
-                dist_frame_feat,
-                masks,
-                dist_hidden_states,
-                self.distal_feature_dim,
-                "dist",
-            )  # (T, B, F)
-
-            # 展平时间-批次维度
-            proprio = unpad_trajectories(proprio, masks)      # (T*B, proprio_dim)
-            prox_feat = unpad_trajectories(prox_feat, masks)  # (T*B, F)
-            dist_feat = unpad_trajectories(dist_feat, masks)  # (T*B, F)
-
+            # Training: pass runner's stored distal hidden state as initial state.
+            perception_out = self._encode_perception(
+                observations, masks=masks, init_dist_hidden=dist_hidden_states
+            )
+            proprio, prox_frame_feat, dist_frame_feat = perception_out
+            prox_feat = prox_frame_feat  # (T, B, 187)
+            dist_feat = dist_frame_feat  # (T, B, 64)
+            proprio = unpad_trajectories(proprio, masks)
+            prox_feat = unpad_trajectories(prox_feat, masks)
+            dist_feat = unpad_trajectories(dist_feat, masks)
         else:
-            # 推理分支：单步输入，输出二维
-            prox_feat = self._run_actor_memory(
-                self.proximal_memory_a,
-                prox_frame_feat,
-                masks=None,
-                hidden_states=None,
-                feat_dim=self.proximal_feature_dim,
-                branch_name="prox",
-            )  # (B, F)
-            dist_feat = self._run_actor_memory(
-                self.distal_memory_a,
-                dist_frame_feat,
-                masks=None,
-                hidden_states=None,
-                feat_dim=self.distal_feature_dim,
-                branch_name="dist",
-            )  # (B, F)
-            # proprio 此时已经是二维 (B, proprio_dim)
+            # Inference: _encode_perception returns (proprio, prox_feat, dist_points).
+            perception_out = self._encode_perception(observations, masks=None)
+            proprio, prox_feat, dist_points = perception_out
+            # Proximal: already encoded by _encode_perception.
+            # Distal: encode with cross-step hidden state.
+            dist_feat_t, self.distal_gru_hidden = self._encode_distal_points_chunked(
+                dist_points.unsqueeze(1), self.distal_gru_hidden
+            )
+            dist_feat = dist_feat_t.squeeze(1)  # (B, 64) — remove T=1 dim
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
 
