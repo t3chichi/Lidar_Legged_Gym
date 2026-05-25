@@ -267,15 +267,13 @@ class Go2LidarPDRiskNet(Go2):
         valid = dist > 0.0
         max_dist = float(self.cfg.pd_risknet.ray_max_distance)
 
-        # Fix no-hit rays: Warp returns (0,0,0) points, but we need them at max_dist
-        # along the ray direction so they don't cluster at the sensor origin.
-        if not valid.all():
-            ray_dirs = self._ray_dirs_sensor.unsqueeze(0).expand(self.num_envs, n_points, 3)
-            points_sensor = torch.where(
-                valid.unsqueeze(-1),
-                points_sensor,
-                ray_dirs * max_dist,
-            )
+        # Fix no-hit rays: Warp returns (0,0,0) points — replace them with max_dist
+        # along the expected ray direction. Uses sparse indexing to avoid materializing
+        # a full (num_envs × n_points × 3) tensor when only a few rays miss.
+        invalid_mask = ~valid
+        if invalid_mask.any():
+            env_ids, pt_ids = torch.where(invalid_mask)
+            points_sensor[env_ids, pt_ids] = self._ray_dirs_sensor[pt_ids] * max_dist
 
         sensor_quat_repeat = self._sensor_offset_quat.unsqueeze(1).repeat(1, n_points, 1).reshape(-1, 4)
         points_base = quat_apply(sensor_quat_repeat, points_sensor.reshape(-1, 3)).reshape(self.num_envs, n_points, 3)
