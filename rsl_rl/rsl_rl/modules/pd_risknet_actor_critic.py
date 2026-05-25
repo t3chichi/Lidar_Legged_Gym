@@ -107,10 +107,11 @@ class PDRiskNetActorCritic(nn.Module):
         self._sensor_conj: torch.Tensor | None = None
         if sensor_offset_rpy is not None and any(v != 0.0 for v in sensor_offset_rpy):
             self._sensor_conj = _quat_conjugate(_euler_to_quat(*sensor_offset_rpy))
-        self._sensor_translation: torch.Tensor = torch.zeros(3, dtype=torch.float32)
         if sensor_offset_pos is not None and any(v != 0.0 for v in sensor_offset_pos):
-            self._sensor_translation = torch.tensor(sensor_offset_pos, dtype=torch.float32)
-        self.register_buffer("_sensor_translation", self._sensor_translation, persistent=False)
+            sensor_t = torch.tensor(sensor_offset_pos, dtype=torch.float32)
+        else:
+            sensor_t = torch.zeros(3, dtype=torch.float32)
+        self.register_buffer("_sensor_translation", sensor_t, persistent=False)
         self.privileged_height_dim = int(privileged_height_dim)
         self.privileged_critic_dim = int(privileged_critic_dim) if privileged_critic_dim is not None else self.privileged_height_dim
         self.privileged_supervision_coef = float(privileged_supervision_coef)
