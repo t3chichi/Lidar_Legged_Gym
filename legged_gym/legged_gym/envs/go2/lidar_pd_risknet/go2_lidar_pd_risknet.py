@@ -117,8 +117,8 @@ class Go2LidarPDRiskNet(Go2):
         # theta < split_theta_deg are distal (far-field), the rest are proximal.
         num_azimuth = int(cfg.spherical_num_azimuth)
         num_elevation = int(cfg.spherical_num_elevation)
-        v_min_rad = math.radians(float(self.cfg.raycaster.vertical_fov_deg_min))
-        v_max_rad = math.radians(float(self.cfg.raycaster.vertical_fov_deg_max))
+        v_min_rad = math.radians(float(getattr(self.cfg.raycaster, "vertical_fov_deg_min", -2.0)))
+        v_max_rad = math.radians(float(getattr(self.cfg.raycaster, "vertical_fov_deg_max", 57.0)))
         split_rad = math.radians(float(cfg.split_theta_deg))
 
         # Elevation descends from v_max to v_min (matching _initialize_grid_rays ordering).
