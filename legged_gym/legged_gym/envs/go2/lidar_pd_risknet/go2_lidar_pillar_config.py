@@ -113,7 +113,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
 
 
     class commands(Go2RoughCfg.commands):
-        heading_command = False
+        heading_command = True
         heading_p_gain = 1.0     # P 增益
         resampling_time = 2.
         curriculum = False
