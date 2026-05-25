@@ -211,7 +211,7 @@ class Go2LidarPillarCfgPPO(Go2RoughCfgPPO):
         critic_hidden_dims = [512, 256, 128]
         perception_enabled = True
         history_length = OBS_HISTORY_LENGTH
-        proximal_history_length = PROX_HISTORY_LENGTH
+        proximal_history_length = 1
         distal_history_length = DIST_HISTORY_LENGTH
         num_lidar_points = PD_NUM_LIDAR_POINTS
         proximal_points = PD_PROXIMAL_POINTS
