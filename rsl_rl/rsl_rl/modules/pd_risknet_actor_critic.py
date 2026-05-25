@@ -482,23 +482,20 @@ class PDRiskNetActorCritic(nn.Module):
         """
         proprio, lidar_frame = self._split_obs(observations)
 
-        if observations.dim() == 2:
-            # Inference: sample, sort, encode proximal; return raw distal points.
-            prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(lidar_frame)
-            prox_feat_t = self._encode_proximal_points_chunked(
-                prox_points_t.unsqueeze(1)
-            ).squeeze(1)  # (B, 187)
-            return proprio, prox_feat_t, dist_points_t
-
-        elif observations.dim() == 3:
-            # Training: build full per-frame feature sequences.
+        if masks is not None:
+            # Training: 3D obs with masks -- build full per-frame feature sequences.
             prox_frame_feat, dist_frame_feat = self._build_replay_frame_features(
                 lidar_frame, masks, init_dist_hidden=init_dist_hidden
             )
             return proprio, prox_frame_feat, dist_frame_feat
 
         else:
-            raise ValueError(f"Unsupported observations rank: {observations.dim()}")
+            # Inference: single frame -- encode proximal, defer distal to caller.
+            prox_points_t, dist_points_t = self._compute_sampled_sorted_points_frame(lidar_frame)
+            prox_feat_t = self._encode_proximal_points_chunked(
+                prox_points_t.unsqueeze(1)
+            ).squeeze(1)  # (B, 187)
+            return proprio, prox_feat_t, dist_points_t
 
     def _build_actor_latent(
         self,
