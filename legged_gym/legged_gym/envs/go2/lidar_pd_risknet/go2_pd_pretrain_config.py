@@ -2,10 +2,10 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 
 
 OBS_HISTORY_LENGTH = 1
-PROX_HISTORY_LENGTH = 10
+PROX_HISTORY_LENGTH = 1
 DIST_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 24
-PD_SPHERICAL_ELEVATION = 18
+PD_SPHERICAL_AZIMUTH = 36
+PD_SPHERICAL_ELEVATION = 24
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 192
@@ -39,11 +39,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = PD_THETA_DEG
 
-        n_sectors = 24
-        avoid_distance_thresh = 1.6
+        n_sectors = 36
+        avoid_distance_thresh = 1.0
         avoid_alpha = 1.5
         avoid_beta = 1.0
-        ray_max_distance = 6.0
+        ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -85,8 +85,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_p_gain = 1.0       # P 增益
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.2, 1.0]   # 前向速度
-            lin_vel_y = [-0.3, 0.3]  # 横向速度，收窄防极端姿态
+            lin_vel_x = [-1.0, 1.0]   # 前向速度
+            lin_vel_y = [-0.5, 0.5]  # 横向速度，收窄防极端姿态
             ang_vel_yaw = [0, 0]
             heading = [-3.1415, 3.1415]
             # heading = [0, 0]
@@ -104,6 +104,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         max_distance = 10.0
         attach_yaw_only = False
+        vertical_fov_deg_min = -2.0   # sensor frame 垂直 FOV 下限 (deg)
+        vertical_fov_deg_max = 57.0   # sensor frame 垂直 FOV 上限 (deg)
         # Match unitree_go2.py lidar mount translation (base frame, meters).
         offset_pos = [0.28945, 0.0, -0.046825]
         # Match unitree_go2.py lidar mount fixed rotation (roll, pitch, yaw in radians).
