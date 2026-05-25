@@ -705,11 +705,16 @@ class OnPolicyRunner:
                 self.privileged_obs_normalizer.load_state_dict(loaded_dict["obs_norm_state_dict"])
         # -- load optimizer if used
         if load_optimizer and resumed_training:
-            # -- algorithm optimizer
-            self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            try:
+                self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            except ValueError as e:
+                print(f"[Runner] Optimizer state mismatch, skipping (Adam will re-initialize): {e}")
             # -- RND optimizer if used
             if self.alg.rnd:
-                self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+                try:
+                    self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+                except ValueError as e:
+                    print(f"[Runner] RND optimizer state mismatch, skipping: {e}")
         # -- load current learning iteration
         if resumed_training:
             self.current_learning_iteration = loaded_dict["iter"]
