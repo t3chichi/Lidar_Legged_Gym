@@ -126,6 +126,11 @@ class Go2LidarPDRiskNet(Go2):
         distal_lines = elev_rad < split_rad  # (num_elevation,)
         distal_mask_2d = distal_lines.unsqueeze(1).expand(num_elevation, num_azimuth)
         self._distal_mask = distal_mask_2d.contiguous().reshape(-1)  # (num_lidar_points,)
+        if self._distal_mask.sum() == 0:
+            raise ValueError(
+                f"No distal rays found: split_theta_deg={float(cfg.split_theta_deg):.1f}° "
+                f"but vertical FOV min={float(self.cfg.raycaster.vertical_fov_deg_min):.1f}°. "
+                f"Lower split_theta_deg or decrease vertical_fov_deg_min.")
 
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
