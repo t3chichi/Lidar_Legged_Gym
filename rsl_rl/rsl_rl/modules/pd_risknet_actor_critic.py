@@ -453,7 +453,8 @@ class PDRiskNetActorCritic(nn.Module):
         out = torch.empty((B, T_dist, self.distal_feature_dim),
                           device=dist_points.device, dtype=dist_points.dtype)
         chunk_size = 128
-        chunk_h = None
+        final_hidden = torch.zeros(1, B, self.distal_feature_dim,
+                                   device=dist_points.device, dtype=dist_points.dtype)
         for start in range(0, B, chunk_size):
             end = min(start + chunk_size, B)
             chunk = dist_points[start:end]  # (c, T, D, 3)
@@ -468,8 +469,7 @@ class PDRiskNetActorCritic(nn.Module):
             else:
                 _, chunk_h = self.distal_gru(chunk_seq, chunk_hidden)
             out[start:end] = chunk_h.squeeze(0).reshape(c, T_dist, -1)
-        final_hidden = chunk_h.reshape(1, B, -1) if chunk_h is not None else torch.zeros(
-            1, B, self.distal_feature_dim, device=dist_points.device, dtype=dist_points.dtype)
+            final_hidden[:, start:end, :] = chunk_h
         return out, final_hidden
 
     def _sort_by_spherical(self, points):

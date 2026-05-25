@@ -653,8 +653,8 @@ class Go2LidarPDRiskNet(Go2):
         self.gym.clear_lines(self.viewer)
         env_id = 0
 
-        # Draw color-coded LiDAR points: proximal (elevation >= 5°) in yellow,
-        # distal (elevation < 5°) in red.
+        # Draw color-coded LiDAR points: proximal (theta >= split_theta) in yellow,
+        # distal (theta < split_theta) in red.
         # Compute theta in sensor frame to match the network's _build_sampling_plan,
         # which correctly splits along the sensor's native spherical grid.
         pts_base = self.lidar_points_base[env_id]
