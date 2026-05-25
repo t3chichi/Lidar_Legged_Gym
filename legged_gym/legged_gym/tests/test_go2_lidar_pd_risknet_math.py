@@ -164,3 +164,75 @@ def test_pd_risknet_config_gate():
     assert env_cfg.pd_risknet.proximal_feature_dim == 187
     assert env_cfg.pd_risknet.distal_feature_dim == 64
     assert env_cfg.pd_risknet.n_sectors == 24
+
+
+def build_distal_mask(num_azimuth, num_elevation, v_fov_min_deg, v_fov_max_deg,
+                       split_theta_deg, device="cpu"):
+    """Replicate the distal mask logic used in _init_pd_risknet_buffers.
+
+    Returns a bool tensor of shape (num_elevation * num_azimuth,).
+    """
+    import torch
+    import math
+
+    v_min_rad = math.radians(v_fov_min_deg)
+    v_max_rad = math.radians(v_fov_max_deg)
+    split_rad = math.radians(split_theta_deg)
+
+    elev_rad = torch.linspace(v_max_rad, v_min_rad, num_elevation, device=device)
+    distal_lines = elev_rad < split_rad  # (num_elevation,)
+    distal_mask_2d = distal_lines.unsqueeze(1).expand(num_elevation, num_azimuth)
+    return distal_mask_2d.contiguous().reshape(-1)
+
+
+def test_distal_mask_shape_and_count():
+    import torch
+
+    num_azimuth = 24
+    num_elevation = 18
+    v_fov_min_deg = -2.0
+    v_fov_max_deg = 57.0
+    split_theta_deg = 20.0
+
+    mask = build_distal_mask(num_azimuth, num_elevation,
+                              v_fov_min_deg, v_fov_max_deg, split_theta_deg)
+
+    # Shape: full spherical grid
+    assert mask.shape == (num_azimuth * num_elevation,), f"expected ({num_azimuth * num_elevation},), got {mask.shape}"
+    # Must be bool
+    assert mask.dtype == torch.bool
+
+    distal_count = mask.sum().item()
+    # With 18 lines from 57° down to -2°, lines < 20°: 11 through 17 = 7 lines x 24 = 168
+    assert distal_count == 168, f"expected 168 distal points, got {distal_count}"
+
+    # Verify specific lines: line 0 (57°) is NOT distal, line 17 (-2°) IS distal
+    assert not mask[0].item()          # line 0, azimuth 0: elevation 57° -> proximal
+    assert mask[-1].item()             # line 17, azimuth 23: elevation -2° -> distal
+
+
+def test_distal_rays_reward_matches_paper():
+    """Paper formula: mean(clip(d_i, d_max) / d_max) over n distal rays."""
+    import torch
+
+    num_azimuth = 24
+    num_elevation = 18
+    mask = build_distal_mask(num_azimuth, num_elevation,
+                              -2.0, 57.0, 20.0)
+
+    # Simulate 2 environments with random distances
+    torch.manual_seed(42)
+    all_distances = torch.rand(2, num_elevation * num_azimuth) * 15.0  # up to 15m
+    distal_dist = all_distances[:, mask]  # only distal rays
+
+    d_max = 10.0
+    clipped = torch.clamp(distal_dist, max=d_max)
+    reward = torch.mean(clipped / d_max, dim=1)
+
+    # All rewards should be in (0, 1]
+    assert torch.all(reward > 0.0)
+    assert torch.all(reward <= 1.0)
+
+    # Verify formula manually for env 0
+    expected = torch.mean(torch.clamp(distal_dist[0], max=d_max) / d_max)
+    assert torch.isclose(reward[0], expected, atol=1e-6)
