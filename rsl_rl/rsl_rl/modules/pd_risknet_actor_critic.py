@@ -676,17 +676,13 @@ class PDRiskNetActorCritic(nn.Module):
                     f"Call act() first to populate the cached actor latent, "
                     f"or pass full actor observations (proprio + LiDAR)."
                 )
-            proprio, prox_frame_feat, dist_frame_feat = self._encode_perception(critic_observations, masks=None)
-            if self.proximal_memory_a.hidden_states is not None:
-                prox_out, _ = self.proximal_memory_a.rnn(prox_frame_feat, self.proximal_memory_a.hidden_states)
-                prox_feat = prox_out[-1]
-            else:
-                prox_feat = prox_frame_feat[-1]
-            if self.distal_memory_a.hidden_states is not None:
-                dist_out, _ = self.distal_memory_a.rnn(dist_frame_feat, self.distal_memory_a.hidden_states)
-                dist_feat = dist_out[-1]
-            else:
-                dist_feat = dist_frame_feat[-1]
+            proprio, prox_feat, dist_points = self._encode_perception(critic_observations, masks=None)
+            # Proximal: already encoded by _encode_perception.
+            # Distal: encode with hidden state for temporal consistency.
+            dist_feat_t, _ = self._encode_distal_points_chunked(
+                dist_points.unsqueeze(1), self.distal_gru_hidden
+            )
+            dist_feat = dist_feat_t.squeeze(1)  # (B, 64)
             return self.critic(torch.cat((proprio, prox_feat, dist_feat), dim=-1))
 
     def get_auxiliary_loss(self, privileged_heights: torch.Tensor, masks: torch.Tensor | None = None) -> torch.Tensor:
