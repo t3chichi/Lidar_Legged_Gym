@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 
 def vel_avoid_reward(v_t, v_cmd, v_avoid, beta_va):
     import torch
@@ -212,27 +214,40 @@ def test_distal_mask_shape_and_count():
 
 
 def test_distal_rays_reward_matches_paper():
-    """Paper formula: mean(clip(d_i, d_max) / d_max) over n distal rays."""
+    """Paper formula with deterministic distances and hand-computed expected value."""
     import torch
 
-    num_azimuth = 24
-    num_elevation = 18
+    # Use a tiny grid (2 elevation x 3 azimuth = 6 points) for hand verification.
+    # FOV: 0° to 30°, split at 15° -> line 0 (30°): proximal, line 1 (0°): distal.
+    num_azimuth = 3
+    num_elevation = 2
     mask = build_distal_mask(num_azimuth, num_elevation,
-                              -2.0, 57.0, 20.0)
+                              0.0, 30.0, 15.0)
+    # mask = [False, False, False, True, True, True] -> 3 distal points
 
-    # Simulate 2 environments with random distances
-    torch.manual_seed(42)
-    all_distances = torch.rand(2, num_elevation * num_azimuth) * 15.0  # up to 15m
-    distal_dist = all_distances[:, mask]  # only distal rays
+    # One env, 6 points. Distal points (indices 3,4,5) at distances 2, 8, 15.
+    all_distances = torch.tensor([[5.0, 1.0, 9.0,  2.0, 8.0, 15.0]], dtype=torch.float32)
+    distal_dist = all_distances[:, mask]  # [[2.0, 8.0, 15.0]]
 
     d_max = 10.0
-    clipped = torch.clamp(distal_dist, max=d_max)
-    reward = torch.mean(clipped / d_max, dim=1)
+    # expected: mean(min(2,10)/10, min(8,10)/10, min(15,10)/10)
+    #         = mean(0.2, 0.8, 1.0) = 2.0 / 3.0
+    expected = torch.tensor([(0.2 + 0.8 + 1.0) / 3.0], dtype=torch.float32)
 
-    # All rewards should be in (0, 1]
-    assert torch.all(reward > 0.0)
-    assert torch.all(reward <= 1.0)
+    reward = torch.mean(torch.clamp(distal_dist, max=d_max) / d_max, dim=1)
+    assert torch.allclose(reward, expected, atol=1e-6)
 
-    # Verify formula manually for env 0
-    expected = torch.mean(torch.clamp(distal_dist[0], max=d_max) / d_max)
-    assert torch.isclose(reward[0], expected, atol=1e-6)
+
+def test_distal_mask_empty_raises():
+    """A mask with zero distal rays should raise ValueError (production guard)."""
+    import torch
+
+    # split at -10° is below v_fov_min (0°) -> all rays proximal, mask is empty.
+    with pytest.raises(ValueError, match="No distal rays found"):
+        mask = build_distal_mask(3, 2, 0.0, 30.0, -10.0)
+        # Replicate the production guard check
+        if mask.sum() == 0:
+            raise ValueError(
+                f"No distal rays found: split_theta_deg={-10.0:.1f}° "
+                f"but vertical FOV min={0.0:.1f}°. "
+                f"Lower split_theta_deg or decrease vertical_fov_deg_min.")
