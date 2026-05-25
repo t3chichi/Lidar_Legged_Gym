@@ -487,29 +487,30 @@ class PDRiskNetActorCritic(nn.Module):
         return prox_feat_seq, dist_feat_seq
 
     def _encode_proximal_points_chunked(self, prox_points: torch.Tensor) -> torch.Tensor:
-        flat_batch_size, t_prox, pn, _ = prox_points.shape
-        prox_frame_feat = torch.empty(
-            (flat_batch_size, t_prox, self.proximal_feature_dim),
-            device=prox_points.device,
-            dtype=prox_points.dtype,
-        )
-        # Chunk flat batch to keep GRU/MLP activations within small GPU memory budgets.
+        """Encode sorted proximal 3D points through single GRU (zero-init per call).
+
+        Args:
+            prox_points: (B, T, P, 3) where T is 1 for inference or N for training batch.
+        Returns:
+            (B, T, proximal_feature_dim)
+        """
+        B, T_prox, P, _ = prox_points.shape
+        out = torch.empty((B, T_prox, self.proximal_feature_dim),
+                          device=prox_points.device, dtype=prox_points.dtype)
         chunk_size = 128
-        for start in range(0, flat_batch_size, chunk_size):
-            end = min(start + chunk_size, flat_batch_size)
-            chunk = prox_points[start:end]
-            chunk_enc = self.proximal_point_encoder(chunk.reshape((end - start) * t_prox * pn, 3)).reshape(
-                end - start, t_prox, pn, -1
-            )
-            chunk_seq = chunk_enc.reshape((end - start) * t_prox, pn, -1)
-            # 训练时使用 checkpoint 节省显存，推理时直接前向（且无需梯度）
+        for start in range(0, B, chunk_size):
+            end = min(start + chunk_size, B)
+            chunk = prox_points[start:end]  # (c, T, P, 3)
+            c = end - start
+            # Reshape: (c*T, P, 3) -> batch_first GRU, seq_len=P
+            chunk_seq = chunk.reshape(c * T_prox, P, 3)
             if self.training:
                 _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
             else:
-                with torch.no_grad():
-                    _, chunk_h = self.proximal_gru(chunk_seq)
-            prox_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_prox, -1)
-        return prox_frame_feat
+                _, chunk_h = self.proximal_gru(chunk_seq)
+            # chunk_h: (1, c*T, 187) -> (c, T, 187)
+            out[start:end] = chunk_h.squeeze(0).reshape(c, T_prox, -1)
+        return out
 
     def _encode_distal_points_chunked(self, dist_points: torch.Tensor) -> torch.Tensor:
         flat_batch_size, t_dist, dn, _ = dist_points.shape
