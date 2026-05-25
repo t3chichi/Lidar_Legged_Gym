@@ -202,6 +202,7 @@ class Go2LidarPDRiskNetCfgPPO(Go2RoughCfgPPO):
         privileged_critic_dim = PD_PRIV_CRITIC_DIM
         privileged_supervision_coef = 1.0
         sensor_offset_rpy = [0.0, -2.8782, 3.14]
+        sensor_offset_pos = [0.28945, 0.0, -0.046825]
 
     class algorithm(Go2RoughCfgPPO.algorithm):
         amp_enabled = True   # 启用混合精度

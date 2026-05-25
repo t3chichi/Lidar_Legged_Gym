@@ -635,12 +635,14 @@ class Go2LidarPDRiskNet(Go2):
         # which correctly splits along the sensor's native spherical grid.
         pts_base = self.lidar_points_base[env_id]
         sensor_q = self._sensor_offset_quat[env_id]  # (4,)
+        # Subtract sensor translation before inverse rotation for correct sensor-frame coordinates.
+        pts_centered = pts_base - self._sensor_translation[env_id].unsqueeze(0)
         # Manual inverse rotation: conjugate and apply (isaacgym's torch_utils
         # requires matched batch dimensions, which is awkward for (4,) @ (N, 3)).
         conj = sensor_q * torch.tensor([-1, -1, -1, 1], device=self.device)
-        conj_vec = conj[:3].unsqueeze(0).expand(pts_base.shape[0], 3)  # (N, 3)
-        t = 2.0 * torch.cross(conj_vec, pts_base, dim=-1)
-        pts_base_sensor = pts_base + conj[3] * t + torch.cross(conj_vec, t, dim=-1)
+        conj_vec = conj[:3].unsqueeze(0).expand(pts_centered.shape[0], 3)  # (N, 3)
+        cross = 2.0 * torch.cross(conj_vec, pts_centered, dim=-1)
+        pts_base_sensor = pts_centered + conj[3] * cross + torch.cross(conj_vec, cross, dim=-1)
         eps = 1e-8
         theta = torch.atan2(pts_base_sensor[:, 2], torch.linalg.norm(pts_base_sensor[:, :2], dim=1) + eps)
         split_rad = float(self.cfg.pd_risknet.split_theta_deg) * math.pi / 180.0

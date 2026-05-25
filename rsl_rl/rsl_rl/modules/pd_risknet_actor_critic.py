@@ -78,6 +78,7 @@ class PDRiskNetActorCritic(nn.Module):
         privileged_critic_dim: int | None = None,
         privileged_supervision_coef: float = 0.5,
         sensor_offset_rpy: list | None = None,
+        sensor_offset_pos: list | None = None,
         **kwargs,
     ):
         if kwargs:
@@ -106,6 +107,10 @@ class PDRiskNetActorCritic(nn.Module):
         self._sensor_conj: torch.Tensor | None = None
         if sensor_offset_rpy is not None and any(v != 0.0 for v in sensor_offset_rpy):
             self._sensor_conj = _quat_conjugate(_euler_to_quat(*sensor_offset_rpy))
+        self._sensor_translation: torch.Tensor = torch.zeros(3, dtype=torch.float32)
+        if sensor_offset_pos is not None and any(v != 0.0 for v in sensor_offset_pos):
+            self._sensor_translation = torch.tensor(sensor_offset_pos, dtype=torch.float32)
+        self.register_buffer("_sensor_translation", self._sensor_translation, persistent=False)
         self.privileged_height_dim = int(privileged_height_dim)
         self.privileged_critic_dim = int(privileged_critic_dim) if privileged_critic_dim is not None else self.privileged_height_dim
         self.privileged_supervision_coef = float(privileged_supervision_coef)
@@ -268,7 +273,8 @@ class PDRiskNetActorCritic(nn.Module):
         # map most points to the wrong side of theta_threshold.
         if self._sensor_conj is not None:
             q = self._sensor_conj.to(device=lidar_hist.device, dtype=lidar_hist.dtype)
-            ref_points = _quat_apply(q, ref_points)
+            t = self._sensor_translation.to(device=lidar_hist.device, dtype=lidar_hist.dtype)
+            ref_points = _quat_apply(q, ref_points - t)
 
         x = ref_points[:, 0]
         y = ref_points[:, 1]
@@ -465,9 +471,15 @@ class PDRiskNetActorCritic(nn.Module):
         return out, final_hidden
 
     def _sort_by_spherical(self, points):
-        x = points[..., 0]
-        y = points[..., 1]
-        z = points[..., 2]
+        if self._sensor_conj is not None:
+            q = self._sensor_conj.to(device=points.device, dtype=points.dtype)
+            t = self._sensor_translation.to(device=points.device, dtype=points.dtype)
+            pts_sensor = _quat_apply(q, points - t)
+        else:
+            pts_sensor = points
+        x = pts_sensor[..., 0]
+        y = pts_sensor[..., 1]
+        z = pts_sensor[..., 2]
         theta = torch.atan2(z, torch.sqrt(x * x + y * y + 1.0e-8))
         phi = torch.atan2(y, x)
         order = torch.argsort(theta * (2.0 * math.pi) + phi, dim=-1)
