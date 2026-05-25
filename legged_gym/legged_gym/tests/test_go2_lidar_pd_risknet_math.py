@@ -46,14 +46,16 @@ def test_pd_risknet_policy_shape_gate():
     import sys
     import torch
 
-    sys.path.insert(0, '/home/t3chichi/extended_legged_gym/rsl_rl')
+    sys.path.insert(0, 'rsl_rl')
     from rsl_rl.modules.pd_risknet_actor_critic import PDRiskNetActorCritic
 
-    num_obs = 48 + 10 * 1024 * 3
-    model = PDRiskNetActorCritic(num_obs, 187, 12)
+    num_obs = 48 + 864 * 3
+    model = PDRiskNetActorCritic(num_obs, 235, 12,
+        num_lidar_points=864, proximal_points=256, distal_points=96,
+        proximal_history_length=1, distal_history_length=10)
     obs = torch.randn(3, num_obs)
     act = model.act(obs)
-    val = model.evaluate(torch.randn(3, 187))
+    val = model.evaluate(torch.randn(3, 235))
 
     assert tuple(act.shape) == (3, 12)
     assert tuple(val.shape) == (3, 1)
@@ -63,11 +65,13 @@ def test_pd_risknet_auxiliary_supervision_gate():
     import sys
     import torch
 
-    sys.path.insert(0, '/home/t3chichi/extended_legged_gym/rsl_rl')
+    sys.path.insert(0, 'rsl_rl')
     from rsl_rl.modules.pd_risknet_actor_critic import PDRiskNetActorCritic
 
-    num_obs = 48 + 10 * 1024 * 3
-    model = PDRiskNetActorCritic(num_obs, 187, 12)
+    num_obs = 48 + 864 * 3
+    model = PDRiskNetActorCritic(num_obs, 235, 12,
+        num_lidar_points=864, proximal_points=256, distal_points=96,
+        proximal_history_length=1, distal_history_length=10)
     obs = torch.randn(4, num_obs)
 
     # Populate cached proximal feature through a forward actor path.
@@ -97,11 +101,21 @@ def test_pd_risknet_config_gate():
     rough_cfg_mod = types.ModuleType('legged_gym.envs.go2.flat.go2_rough_config')
 
     class _Go2RoughCfg:
+        class asset:
+            pass
+
+        class init_state:
+            pass
+
         class env:
             num_envs = 4096
 
         class terrain:
             measure_heights = True
+
+        class commands:
+            class ranges:
+                pass
 
         class raycaster:
             pass
@@ -115,6 +129,13 @@ def test_pd_risknet_config_gate():
                 pass
 
         class domain_rand:
+            pass
+
+        class sim:
+            class physx:
+                pass
+
+        class obstacle_gen:
             pass
 
     class _Go2RoughCfgPPO:
@@ -136,7 +157,7 @@ def test_pd_risknet_config_gate():
     sys.modules['legged_gym.envs.go2.flat'] = flat_mod
     sys.modules['legged_gym.envs.go2.flat.go2_rough_config'] = rough_cfg_mod
 
-    cfg_path = '/home/t3chichi/extended_legged_gym/legged_gym/legged_gym/envs/go2/lidar_pd_risknet/go2_lidar_pd_risknet_config.py'
+    cfg_path = 'legged_gym/legged_gym/envs/go2/lidar_pd_risknet/go2_lidar_pd_risknet_config.py'
     spec = importlib.util.spec_from_file_location('go2_lidar_pd_cfg', cfg_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -162,10 +183,10 @@ def test_pd_risknet_config_gate():
     assert train_cfg.algorithm.num_mini_batches == 4
 
     # PD-RiskNet shape contract.
-    assert env_cfg.pd_risknet.history_length == 10
+    assert env_cfg.pd_risknet.history_length == 1
     assert env_cfg.pd_risknet.proximal_feature_dim == 187
     assert env_cfg.pd_risknet.distal_feature_dim == 64
-    assert env_cfg.pd_risknet.n_sectors == 24
+    assert env_cfg.pd_risknet.n_sectors == 36
 
 
 def build_distal_mask(num_azimuth, num_elevation, v_fov_min_deg, v_fov_max_deg,
