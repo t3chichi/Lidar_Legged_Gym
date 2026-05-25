@@ -45,7 +45,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.6
         avoid_alpha = 1.5
         avoid_beta = 1.0
-        ray_max_distance = 6.0  # rays 奖励截断距离 (m)
+        ray_max_distance = 10.0  # rays 奖励截断距离 (m)，对齐 raycaster.max_distance
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -113,7 +113,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
 
 
     class commands(Go2RoughCfg.commands):
-        heading_command = True
+        heading_command = False
         heading_p_gain = 1.0     # P 增益
         resampling_time = 2.
         curriculum = False
@@ -136,6 +136,8 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         max_distance = 10.0
         attach_yaw_only = False
+        vertical_fov_deg_min = -2.0   # sensor frame 垂直 FOV 下限 (deg)
+        vertical_fov_deg_max = 57.0   # sensor frame 垂直 FOV 上限 (deg)
         # Match unitree_go2.py lidar mount translation (base frame, meters).
         offset_pos = [0.28945, 0.0, -0.046825]
         # Match unitree_go2.py lidar mount fixed rotation (roll, pitch, yaw in radians).
