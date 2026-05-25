@@ -111,6 +111,22 @@ class Go2LidarPDRiskNet(Go2):
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
 
+        # Precompute distal ray mask from spherical grid geometry.
+        # The LiDAR sensor uses a SIMPLE_GRID pattern: elevation x azimuth, flattened
+        # row-major. In the sensor frame, theta = elevation angle. Rays with
+        # theta < split_theta_deg are distal (far-field), the rest are proximal.
+        num_azimuth = int(cfg.spherical_num_azimuth)
+        num_elevation = int(cfg.spherical_num_elevation)
+        v_min_rad = math.radians(float(self.cfg.raycaster.vertical_fov_deg_min))
+        v_max_rad = math.radians(float(self.cfg.raycaster.vertical_fov_deg_max))
+        split_rad = math.radians(float(cfg.split_theta_deg))
+
+        # Elevation descends from v_max to v_min (matching _initialize_grid_rays ordering).
+        elev_rad = torch.linspace(v_max_rad, v_min_rad, num_elevation, device=self.device)
+        distal_lines = elev_rad < split_rad  # (num_elevation,)
+        distal_mask_2d = distal_lines.unsqueeze(1).expand(num_elevation, num_azimuth)
+        self._distal_mask = distal_mask_2d.reshape(-1)  # (num_lidar_points,)
+
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
             self.lidar_sensor = None
