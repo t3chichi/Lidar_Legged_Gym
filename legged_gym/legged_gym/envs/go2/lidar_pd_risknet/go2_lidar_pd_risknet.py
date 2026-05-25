@@ -132,6 +132,21 @@ class Go2LidarPDRiskNet(Go2):
                 f"but vertical FOV min={float(self.cfg.raycaster.vertical_fov_deg_min):.1f}°. "
                 f"Lower split_theta_deg or decrease vertical_fov_deg_min.")
 
+        # Precompute ray direction vectors in sensor frame for no-hit point correction.
+        # Matches LidarSensor._initialize_grid_rays spherical grid pattern.
+        h_fov_min = math.radians(-180.0)
+        h_fov_max = math.radians(180.0)
+        ray_dirs = torch.empty((num_elevation, num_azimuth, 3), device=self.device, dtype=torch.float)
+        for i in range(num_elevation):
+            elev = v_max_rad - (v_max_rad - v_min_rad) * i / (num_elevation - 1)
+            for j in range(num_azimuth):
+                az = h_fov_max - (h_fov_max - h_fov_min) * j / (num_azimuth - 1)
+                ray_dirs[i, j, 0] = math.cos(az) * math.cos(elev)
+                ray_dirs[i, j, 1] = math.sin(az) * math.cos(elev)
+                ray_dirs[i, j, 2] = math.sin(elev)
+        self._ray_dirs_sensor = ray_dirs.reshape(-1, 3)  # (num_lidar_points, 3)
+        self._ray_dirs_sensor = self._ray_dirs_sensor / torch.norm(self._ray_dirs_sensor, dim=1, keepdim=True)
+
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
             self.lidar_sensor = None
@@ -248,12 +263,23 @@ class Go2LidarPDRiskNet(Go2):
         lidar_points, lidar_dist = self.lidar_sensor.update()
         points_sensor = lidar_points.view(self.num_envs, -1, 3)
         n_points = points_sensor.shape[1]
-        sensor_quat_repeat = self._sensor_offset_quat.unsqueeze(1).repeat(1, n_points, 1).reshape(-1, 4)
-        points_base = quat_apply(sensor_quat_repeat, points_sensor.reshape(-1, 3)).reshape(self.num_envs, n_points, 3)
-        points_base = points_base + self._sensor_translation.unsqueeze(1)
         dist = lidar_dist.view(self.num_envs, -1)
         valid = dist > 0.0
         max_dist = float(self.cfg.pd_risknet.ray_max_distance)
+
+        # Fix no-hit rays: Warp returns (0,0,0) points, but we need them at max_dist
+        # along the ray direction so they don't cluster at the sensor origin.
+        if not valid.all():
+            ray_dirs = self._ray_dirs_sensor.unsqueeze(0).expand(self.num_envs, n_points, 3)
+            points_sensor = torch.where(
+                valid.unsqueeze(-1),
+                points_sensor,
+                ray_dirs * max_dist,
+            )
+
+        sensor_quat_repeat = self._sensor_offset_quat.unsqueeze(1).repeat(1, n_points, 1).reshape(-1, 4)
+        points_base = quat_apply(sensor_quat_repeat, points_sensor.reshape(-1, 3)).reshape(self.num_envs, n_points, 3)
+        points_base = points_base + self._sensor_translation.unsqueeze(1)
         dist = torch.where(valid, dist, torch.full_like(dist, max_dist))
 
         # === 通路 A：避障用 — 仅地面滤除，不经过域随机化 ===
