@@ -467,7 +467,8 @@ class PDRiskNetActorCritic(nn.Module):
 
             # 编码得到空间特征 [B, 1, feature_dim]，然后去掉时间维
             prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
-            dist_feat_t = self._encode_distal_points_chunked(dist_points_t).squeeze(1)    # [B, distal_feature_dim]
+            dist_feat_t, _ = self._encode_distal_points_chunked(dist_points_t)
+            dist_feat_t = dist_feat_t.squeeze(1)  # [B, distal_feature_dim]
 
             prox_feat_seq.append(prox_feat_t)
             dist_feat_seq.append(dist_feat_t)
@@ -512,28 +513,37 @@ class PDRiskNetActorCritic(nn.Module):
             out[start:end] = chunk_h.squeeze(0).reshape(c, T_prox, -1)
         return out
 
-    def _encode_distal_points_chunked(self, dist_points: torch.Tensor) -> torch.Tensor:
-        flat_batch_size, t_dist, dn, _ = dist_points.shape
-        dist_frame_feat = torch.empty(
-            (flat_batch_size, t_dist, self.distal_feature_dim),
-            device=dist_points.device,
-            dtype=dist_points.dtype,
-        )
+    def _encode_distal_points_chunked(
+        self, dist_points: torch.Tensor, hidden: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Encode sorted distal 3D points through single GRU with optional hidden state.
+
+        Args:
+            dist_points: (B, T, D, 3) where T is 1 for inference or N for training batch.
+            hidden: (1, B, 64) optional initial hidden state. If None, zero-init.
+        Returns:
+            (output: (B, T, distal_feature_dim), final_hidden: (1, B, distal_feature_dim))
+        """
+        B, T_dist, D, _ = dist_points.shape
+        out = torch.empty((B, T_dist, self.distal_feature_dim),
+                          device=dist_points.device, dtype=dist_points.dtype)
         chunk_size = 128
-        for start in range(0, flat_batch_size, chunk_size):
-            end = min(start + chunk_size, flat_batch_size)
-            chunk = dist_points[start:end]
-            chunk_enc = self.distal_point_encoder(chunk.reshape((end - start) * t_dist * dn, 3)).reshape(
-                end - start, t_dist, dn, -1
-            )
-            chunk_seq = chunk_enc.reshape((end - start) * t_dist, dn, -1)
+        for start in range(0, B, chunk_size):
+            end = min(start + chunk_size, B)
+            chunk = dist_points[start:end]  # (c, T, D, 3)
+            c = end - start
+            chunk_seq = chunk.reshape(c * T_dist, D, 3)
+            chunk_hidden = None
+            if hidden is not None:
+                chunk_hidden = hidden[:, start:end, :]  # (1, c, 64)
             if self.training:
-                _, chunk_h = checkpoint(self.distal_spatial_gru, chunk_seq, use_reentrant=True)
+                _, chunk_h = checkpoint(self.distal_gru, chunk_seq, chunk_hidden,
+                                        use_reentrant=True)
             else:
-                with torch.no_grad():
-                    _, chunk_h = self.distal_spatial_gru(chunk_seq)
-            dist_frame_feat[start:end] = chunk_h.squeeze(0).reshape(end - start, t_dist, -1)
-        return dist_frame_feat
+                _, chunk_h = self.distal_gru(chunk_seq, chunk_hidden)
+            out[start:end] = chunk_h.squeeze(0).reshape(c, T_dist, -1)
+        final_hidden = chunk_h.reshape(1, B, -1)
+        return out, final_hidden
 
     def _sort_by_spherical(self, points):
         x = points[..., 0]
@@ -554,7 +564,8 @@ class PDRiskNetActorCritic(nn.Module):
             prox_points_t = prox_points_t.unsqueeze(1)  # [B, 1, prox_points, 3]
             dist_points_t = dist_points_t.unsqueeze(1)  # [B, 1, dist_points, 3]
             prox_feat_t = self._encode_proximal_points_chunked(prox_points_t).squeeze(1)  # [B, proximal_feature_dim]
-            dist_feat_t = self._encode_distal_points_chunked(dist_points_t).squeeze(1)    # [B, distal_feature_dim]
+            dist_feat_t, _ = self._encode_distal_points_chunked(dist_points_t)
+            dist_feat_t = dist_feat_t.squeeze(1)  # [B, distal_feature_dim]
             prox_frame_feat = prox_feat_t.unsqueeze(0)   # [1, B, F]
             dist_frame_feat = dist_feat_t.unsqueeze(0)   # [1, B, F]
             return proprio, prox_frame_feat, dist_frame_feat
