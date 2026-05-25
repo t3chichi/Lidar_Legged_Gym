@@ -17,7 +17,7 @@ PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [-0.2, 1.8]
+MEASURED_GRID_X_RANGE = [-0.1, 2.1]
 MEASURED_GRID_Y_RANGE = [-0.75, 0.75]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
@@ -171,7 +171,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
             base_height = -2.0
-            orientation = -0.0
+            orientation = -0.5
             #override
             # lin_vel_z = -1.0e-3
 
