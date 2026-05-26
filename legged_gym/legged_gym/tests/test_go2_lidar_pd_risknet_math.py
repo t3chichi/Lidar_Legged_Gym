@@ -274,36 +274,88 @@ def test_distal_mask_empty_raises():
                 f"Lower split_theta_deg or decrease vertical_fov_deg_min.")
 
 
-def test_v_avoid_paper_formula():
-    """Paper formula: V_j = exp(-d_j * alpha) * (-dir_j) if d_j < thresh."""
+def test_v_avoid_guided_formula():
+    """Guided formula: w_i = (cos_i + c) * exp(-alpha * d_i) * (d_i < d_max),
+       v_avoid = ||v_cmd|| * sum(w_i * (-u_i))."""
     import torch
     import math
 
-    alpha = 1.5
-    thresh = 1.0
+    c_val = 0.15
+    alpha = 1.0
+    d_max = 1.5
     n_sec = 36
     sec_size = 2.0 * math.pi / n_sec
 
-    # Simulate 2 envs: env0 has close obstacle at sector 2 (0.5m), env1 is clear
-    inf = torch.tensor(1e9)
-    min_dist = torch.tensor([
-        [inf, inf, 0.5, inf, inf] + [inf] * (n_sec - 5),   # env0
-        [inf] * n_sec,                                        # env1: all clear
-    ])
-
-    active = min_dist < thresh
-    mag = torch.exp(-min_dist * alpha) * active.float()
+    # Sector center directions: sec 0 = -175°, sec 18 approx 5° (forward), etc.
     sec_centers = torch.linspace(-math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec)
-    away_dirs = torch.stack((-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1)
+    u = torch.stack((torch.cos(sec_centers), torch.sin(sec_centers)), dim=-1)       # (n_sec, 2)
+    away_dirs = -u                                                                   # (n_sec, 2)
 
-    v_avoid = torch.sum(away_dirs.unsqueeze(0) * mag.unsqueeze(-1), dim=1)
+    inf = torch.tensor(1e9)
+    v_cmd_dir = torch.tensor([[1.0, 0.0]])  # forward
 
-    # env1: zero avoidance
-    assert torch.all(v_avoid[1] == 0.0)
+    # --- Case 1: stationary command -> v_avoid = 0 ---
+    v_cmd_0 = torch.tensor([[0.0, 0.0]])
+    nonzero_0 = torch.norm(v_cmd_0, dim=1) > 1e-6
+    assert not nonzero_0.any(), "stationary command should produce no avoidance"
 
-    # env0: non-zero, pointing away from sector 2
-    assert v_avoid[0].norm() > 0.0
+    # --- Case 2: forward command, obstacle at sec 18 (forward), d=0.5m ---
+    d_1 = torch.full((1, n_sec), inf)
+    d_1[0, 18] = 0.5
 
-    # Magnitude check: |V| = exp(-0.5 * 1.5) ≈ 0.4724 (single active sector)
-    expected_mag = math.exp(-0.5 * 1.5)
-    assert abs(v_avoid[0].norm().item() - expected_mag) < 1e-4
+    cos = torch.relu(torch.mm(v_cmd_dir, u.T))  # (1, n_sec)
+    # sec 18 center = 5°, cos = cos(5°) = 0.996
+    assert cos[0, 18].item() > 0.99
+
+    active = d_1 < d_max
+    w = (cos + c_val) * torch.exp(-alpha * d_1) * active.float()
+    v_avoid_1 = 0.5 * (w @ away_dirs)  # ||v_cmd|| = 0.5
+
+    # w[0, 18] = (0.996 + 0.15) * exp(-0.5) = 1.146 * 0.6065 = 0.695
+    expected_w = (cos[0, 18].item() + c_val) * math.exp(-0.5)
+    assert abs(w[0, 18].item() - expected_w) < 1e-4
+    # Strong backward push (negative x)
+    assert v_avoid_1[0, 0].item() < -0.3
+
+    # --- Case 3: forward command, clear environment -> v_avoid = 0 ---
+    d_3 = torch.full((1, n_sec), inf)  # all clear
+    active_3 = d_3 < d_max
+    # exp(-inf) = 0, and active_3 is all False -> w_3 all zeros
+    w_3 = (cos + c_val) * torch.exp(-alpha * d_3) * active_3.float()
+    assert (w_3 == 0.0).all(), "clear env should have zero weights"
+    v_avoid_3 = 0.5 * (w_3 @ away_dirs)
+    assert torch.all(v_avoid_3.abs() < 1e-6)
+
+    # --- Case 4: forward command, lateral wall on left (cos = 0, d small) ---
+    # Sector 27 center = 95° = left, u = [-0.087, 0.996], cos = 0 (forward cmd perpendicular to left)
+    d_4 = torch.full((1, n_sec), inf)
+    d_4[0, 27] = 0.3  # left wall close
+    active_4 = d_4 < d_max
+    w_4 = (cos + c_val) * torch.exp(-alpha * d_4) * active_4.float()
+    v_avoid_4 = 0.5 * (w_4 @ away_dirs)
+
+    # cos[27] = max(0, [1,0][-0.087,0.996]) = 0
+    # w = (0 + 0.15) * exp(-0.3) = 0.111
+    # away_dir[27] = -u[27] = [0.087, -0.996], pushes right+forward (away from left wall)
+    expected_w_27 = 0.15 * math.exp(-0.3)
+    assert abs(w_4[0, 27].item() - expected_w_27) < 1e-4
+    # Push should be rightward (negative y in body frame) since wall is on left
+    assert v_avoid_4[0, 1].item() < 0.0, f"should push right away from left wall, got vy={v_avoid_4[0,1].item():.4f}"
+    # Gentle push magnitude = 0.5 * 0.111 = 0.056
+    mag_4 = v_avoid_4.norm(dim=1).item()
+    assert 0.03 < mag_4 < 0.10, f"lateral push should be gentle, got {mag_4:.4f}"
+
+    # --- Case 5: 5-sector lateral wall (cos = 0) -> should NOT explode ---
+    # Sectors 6-10 (span -115deg to -75deg, right side). With forward command,
+    # cos is near-zero for most of these, dominated by c.
+    d_5 = torch.full((1, n_sec), inf)
+    for i in range(6, 11):
+        d_5[0, i] = 0.5
+    active_5 = d_5 < d_max
+    w_5 = (cos + c_val) * torch.exp(-alpha * d_5) * active_5.float()
+    v_avoid_5 = 0.5 * (w_5 @ away_dirs)
+    mag_5 = v_avoid_5.norm(dim=1).item()
+    # With cos=0 for most of these 5 sectors, each contributes ~c*exp(-0.5)=0.091.
+    # Away y-components all point left (positive), summing to ~0.32 total.
+    assert mag_5 < 0.4, \
+        f"lateral wall should not cause large avoidance: {mag_5:.4f} >= 0.4"
