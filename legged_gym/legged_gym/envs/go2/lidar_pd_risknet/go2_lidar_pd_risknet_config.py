@@ -98,7 +98,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         # 弯曲通道地形配置
         corridor_width = 3.0       # 通道宽度 (m)
-        wall_height = 0.8          # 墙壁高度 (m)
+        wall_height = 1.5          # 墙壁高度 (m)
         wall_thickness = 2       # 墙壁厚度 (m)
         amplitude = 1.0            # 正弦波振幅 (m)
         num_cycles = 1.5           # 正弦波周期数
