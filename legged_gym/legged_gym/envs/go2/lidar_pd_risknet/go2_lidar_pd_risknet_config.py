@@ -30,7 +30,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
         rot_randomization_range = [-0.2, 0.2]   # 相对切线方向的偏航随机范围 (rad)
-        spawn_offset_range = 0.2                 # 出生点 XY 随机偏移范围 (m)
+        spawn_offset_range = 0.5                 # 出生点 XY 随机偏移范围 (m)
 
     class pd_risknet:
         enabled = True
@@ -42,10 +42,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         split_theta_deg = PD_THETA_DEG
 
         n_sectors = 36
-        avoid_distance_thresh = 1.5
-        avoid_alpha = 1.0
+        avoid_distance_thresh = 10
+        avoid_alpha = 1.5
         avoid_beta = 1.0
-        avoid_c = 0.15   # 侧面兜底推力比例，占指令速度的 15%
+        avoid_c = 0.0   # 侧面兜底推力比例
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -110,18 +110,21 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         goal_radius = 1.6          # 终点半径 (m)
 
         # 通道内随机方柱
-        pillar_count = 0           # 每通道柱子数量
-        pillar_half_width = 0.15   # 柱子半宽 (m), 全宽=0.3m
+        pillar_count = 0          # 每通道柱子数量
+        pillar_half_width = 0.2   # 柱子半宽 (m)
         pillar_min_separation = 3  # 柱子间最小净距 (m)
         pillar_wall_margin = 0.8   # 柱子与墙最小净距 (m)
         pillar_centerline_margin = 0.4  # 柱子与中心线最小距离 (m)
-        pillar_margin_end = 3.0    # 柱子距两端半圆圆心最小距离 (m)
+        pillar_margin_end = 4.0    # 柱子距两端半圆圆心最小距离 (m)
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
         heading_p_gain = 1.0     # P 增益
         resampling_time = 2.
         curriculum = False
+
+        # heading_command = False
+
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.4, 0.8]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
