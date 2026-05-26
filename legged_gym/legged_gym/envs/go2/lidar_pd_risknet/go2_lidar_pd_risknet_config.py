@@ -42,8 +42,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         split_theta_deg = PD_THETA_DEG
 
         n_sectors = 36
-        avoid_distance_thresh = 1.0
-        avoid_alpha = 1.5
+        avoid_distance_thresh = 1.5
+        avoid_alpha = 1.0
         avoid_beta = 1.0
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
@@ -171,7 +171,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
             base_height = -2.0
-            orientation = -0.5
+            orientation = -2.0
             #override
             # lin_vel_z = -1.0e-3
 
