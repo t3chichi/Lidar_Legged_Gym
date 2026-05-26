@@ -353,8 +353,9 @@ class Go2LidarPDRiskNet(Go2):
             alpha = float(cfg.avoid_alpha)
             w = (cos + c_val) * torch.exp(-alpha * d) * (d < d_max).float()      # (N, n_sec)
 
-            # Weighted sum: v_avoid = ||v_cmd|| * sum(w_i * (-u_i)).
-            v_avoid_nonzero = v_cmd_norm[nonzero] * (w @ away_dirs)               # (N, 2)
+            # Weighted average: v_avoid = ||v_cmd|| * sum(w_i * (-u_i)) / sum(w_i).
+            w_sum = w.sum(dim=1, keepdim=True)                                     # (N, 1)
+            v_avoid_nonzero = v_cmd_norm[nonzero] * ((w @ away_dirs) / (w_sum + 1e-6))  # (N, 2)
 
             self.v_avoid[nonzero] = v_avoid_nonzero
 
