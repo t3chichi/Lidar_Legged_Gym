@@ -319,30 +319,47 @@ class Go2LidarPDRiskNet(Go2):
         angles = torch.atan2(pts[..., 1], pts[..., 0])
         sec_ids = torch.floor((angles + math.pi) / sec_size).long().clamp(min=0, max=n_sec - 1)
 
-        # Per-sector minimum distance. Non-sector points are set to a large
-        # sentinel so they sort to the end, making min() correct.
+        # Per-sector minimum distance (unchanged).
         inf = torch.full_like(dist, 1.0e9)
         min_dist_per_sec = []
         for sec in range(n_sec):
             sec_vals = torch.where(sec_ids == sec, dist, inf)
-            sec_min = torch.min(sec_vals, dim=1).values  # (num_envs,)
+            sec_min = torch.min(sec_vals, dim=1).values
             min_dist_per_sec.append(sec_min)
         min_dist_per_sec = torch.stack(min_dist_per_sec, dim=1)  # (num_envs, n_sec)
 
-        # Active sectors: d < threshold => exp(-d * alpha); inactive => 0
-        active = min_dist_per_sec < float(cfg.avoid_distance_thresh)
-        mag = torch.exp(-min_dist_per_sec * float(cfg.avoid_alpha)) * active.float()
-
-        # Sector center directions; avoidance pushes AWAY from each sector
+        # Sector center directions pointing AWAY from each sector.
         sec_centers = torch.linspace(
             -math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec, device=self.device
         )
         away_dirs = torch.stack(
             (-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1
-        ).unsqueeze(0)  # (1, n_sec, 2)
+        )  # (n_sec, 2)
 
-        # Vector sum over all sectors
-        self.v_avoid = torch.sum(away_dirs * mag.unsqueeze(-1), dim=1)  # (num_envs, 2)
+        # Command direction projection per sector: cos_i = max(0, v_cmd_dir · u_i).
+        v_cmd = self.commands[:, :2]                                              # (num_envs, 2)
+        v_cmd_norm = torch.norm(v_cmd, dim=1, keepdim=True)                       # (num_envs, 1)
+        nonzero = (v_cmd_norm.squeeze(1) > 1e-6)                                  # (num_envs,)
+
+        if nonzero.any():
+            v_cmd_dir = v_cmd[nonzero] / v_cmd_norm[nonzero]                      # (N, 2)
+            u = -away_dirs                                                        # (n_sec, 2), sector center directions
+            cos = torch.relu(torch.mm(v_cmd_dir, u.T))                            # (N, n_sec), [0, 1]
+
+            # Weighted urgency: (cos_i + c) * exp(-alpha * d_i) * within_d_max.
+            d = min_dist_per_sec[nonzero]                                          # (N, n_sec)
+            d_max = float(cfg.avoid_distance_thresh)
+            c_val = float(getattr(cfg, "avoid_c", 0.15))
+            alpha = float(cfg.avoid_alpha)
+            w = (cos + c_val) * torch.exp(-alpha * d) * (d < d_max).float()      # (N, n_sec)
+
+            # Weighted sum: v_avoid = ||v_cmd|| * sum(w_i * (-u_i)).
+            v_avoid_nonzero = v_cmd_norm[nonzero] * (w @ away_dirs)               # (N, 2)
+
+            self.v_avoid[nonzero] = v_avoid_nonzero
+
+        # Stationary envs: v_avoid = 0.
+        self.v_avoid[~nonzero] = 0.0
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
