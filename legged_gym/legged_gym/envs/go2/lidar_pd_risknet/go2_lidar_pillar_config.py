@@ -145,7 +145,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         base_height_target = 0.34
         class scales:
             # Paper main rewards.
-            vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
+            vel_avoid = 1.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
             rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
             # Auxiliary rewards from appendix Table 5.

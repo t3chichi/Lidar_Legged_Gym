@@ -736,12 +736,15 @@ class Go2LidarPDRiskNet(Go2):
 
         avoid_vec = avoid_world.astype(np.float32)
 
+        # Scale factor: 1m arrow = 1 m/s, clamp to avoid extreme-length arrows.
+        max_display_len = 3.0
         avoid_norm = np.linalg.norm(avoid_vec[:2])
         if avoid_norm > 1.0e-6:
+            display_len = min(avoid_norm, max_display_len)
             self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + 0.6 * avoid_vec / avoid_norm).tolist(),
+                                (start + display_len * avoid_vec / avoid_norm).tolist(),
                                 width=0.01, color=(1, 1, 0))
-            
+
         # 绘制合成速度 (蓝色)
         combined_xy = (self.commands[env_id, :2] + self.v_avoid[env_id]).detach()
         combined_body = torch.tensor([combined_xy[0].item(), combined_xy[1].item(), 0.0], device=self.device)
@@ -749,6 +752,7 @@ class Go2LidarPDRiskNet(Go2):
         combined_vec = combined_world.astype(np.float32)
         combined_norm = np.linalg.norm(combined_vec[:2])
         if combined_norm > 1.0e-6:
+            display_len = min(combined_norm, max_display_len)
             self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + 0.6 * combined_vec / combined_norm).tolist(),
+                                (start + display_len * combined_vec / combined_norm).tolist(),
                                 width=0.01, color=(0, 0, 1))  # 蓝色
