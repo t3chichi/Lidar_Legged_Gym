@@ -2,7 +2,7 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 
 
 OBS_HISTORY_LENGTH = 1
-PROX_HISTORY_LENGTH = 1
+PROX_HISTORY_LENGTH = 10
 DIST_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 36
 PD_SPHERICAL_ELEVATION = 24
@@ -18,8 +18,8 @@ PD_THETA_DEG = 20.0
 # Counts must match the main risknet config (17×11=187) for weight transfer.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [-0.1, 2.1]
-MEASURED_GRID_Y_RANGE = [-0.75, 0.75]
+MEASURED_GRID_X_RANGE = [-0.0, 2.0]
+MEASURED_GRID_Y_RANGE = [-0.7, 0.7]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
@@ -41,7 +41,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 36
         avoid_distance_thresh = 1.0
-        avoid_alpha = 1.5
+        avoid_alpha = 1.0
         avoid_beta = 1.0
         ray_max_distance = 10.0
 
