@@ -275,89 +275,76 @@ def test_distal_mask_empty_raises():
 
 
 def test_v_avoid_guided_formula():
-    """Guided formula: w_i = (cos_i + c) * exp(-alpha * d_i) * (d_i < d_max),
-       v_avoid = ||v_cmd|| * sum(w_i * (-u_i))."""
+    """Pure distance-weighted formula: w_i = exp(-alpha * d_i) * (d_i < d_max),
+       v_avoid = ||v_cmd|| * sum(w_i * (-u_i)) / sum(w_i)."""
     import torch
     import math
 
-    c_val = 0.0   # match current config default
     alpha = 1.0
     d_max = 1.5
     n_sec = 36
     sec_size = 2.0 * math.pi / n_sec
 
-    # Sector center directions: sec 0 = -175°, sec 18 approx 5° (forward), etc.
     sec_centers = torch.linspace(-math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size, n_sec)
-    u = torch.stack((torch.cos(sec_centers), torch.sin(sec_centers)), dim=-1)       # (n_sec, 2)
-    away_dirs = -u                                                                   # (n_sec, 2)
+    u = torch.stack((torch.cos(sec_centers), torch.sin(sec_centers)), dim=-1)
+    away_dirs = -u
 
     inf = torch.tensor(1e9)
-    v_cmd_dir = torch.tensor([[1.0, 0.0]])  # forward
-    cos = torch.relu(torch.mm(v_cmd_dir, u.T))  # (1, n_sec), shared by all cases
 
-    # --- Case 1: stationary command -> v_avoid = 0 ---
-    v_cmd_0 = torch.tensor([[0.0, 0.0]])
-    nonzero_0 = torch.norm(v_cmd_0, dim=1) > 1e-6
-    assert not nonzero_0.any(), "stationary command should produce no avoidance"
-
-    # --- Case 2: forward command, obstacle at sec 18 (forward), d=0.5m ---
+    # --- Case 1: head-on obstacle (sector 18, d=0.5) -> backward push ---
     d_1 = torch.full((1, n_sec), inf)
     d_1[0, 18] = 0.5
-    # sec 18 center = 5°, cos = cos(5°) = 0.996
-    assert cos[0, 18].item() > 0.99
+    active_1 = d_1 < d_max
+    w_1 = torch.exp(-alpha * d_1) * active_1.float()
+    w_sum_1 = w_1.sum(dim=1, keepdim=True)
+    v_avoid_1 = 0.5 * ((w_1 @ away_dirs) / (w_sum_1 + 1e-6))
 
-    active = d_1 < d_max
-    w = (cos + c_val) * torch.exp(-alpha * d_1) * active.float()
-    w_sum_1 = w.sum(dim=1, keepdim=True)
-    v_avoid_1 = 0.5 * ((w @ away_dirs) / (w_sum_1 + 1e-6))
-
-    # Single active sector: weighted avg = away_dir[18] = [-0.996, -0.087]
-    # v_avoid magnitude = ||v_cmd|| = 0.5
-    expected_w = (cos[0, 18].item() + c_val) * math.exp(-0.5)
-    assert abs(w[0, 18].item() - expected_w) < 1e-4
+    # Single sector: weighted avg = away_dir[18] = [-0.996, -0.087]
     assert v_avoid_1[0, 0].item() < -0.4
     assert abs(v_avoid_1.norm().item() - 0.5) < 1e-4
 
-    # --- Case 3: forward command, clear environment -> v_avoid = 0 ---
-    d_3 = torch.full((1, n_sec), inf)  # all clear
+    # --- Case 2: clear environment -> v_avoid = 0 ---
+    d_2 = torch.full((1, n_sec), inf)
+    active_2 = d_2 < d_max
+    w_2 = torch.exp(-alpha * d_2) * active_2.float()
+    w_sum_2 = w_2.sum(dim=1, keepdim=True)
+    v_avoid_2 = 0.5 * ((w_2 @ away_dirs) / (w_sum_2 + 1e-6))
+    assert torch.all(v_avoid_2.abs() < 1e-6)
+
+    # --- Case 3: left wall closer than right -> push rightward ---
+    # Left sector 26 (85deg, away=[-0.087, -0.996]) at d=0.3, w=exp(-0.3)=0.741
+    # Right sector 9 (-85deg, away=[-0.087, 0.996]) at d=1.0, w=exp(-1.0)=0.368
+    # Weighted avg y = (-0.996*0.741 + 0.996*0.368)/1.109 = -0.335 -> pushes right
+    d_3 = torch.full((1, n_sec), inf)
+    d_3[0, 26] = 0.3   # left wall close
+    d_3[0, 9] = 1.0    # right wall far
     active_3 = d_3 < d_max
-    # exp(-inf) = 0, and active_3 is all False -> w_3 all zeros
-    w_3 = (cos + c_val) * torch.exp(-alpha * d_3) * active_3.float()
-    assert (w_3 == 0.0).all(), "clear env should have zero weights"
+    w_3 = torch.exp(-alpha * d_3) * active_3.float()
     w_sum_3 = w_3.sum(dim=1, keepdim=True)
     v_avoid_3 = 0.5 * ((w_3 @ away_dirs) / (w_sum_3 + 1e-6))
-    assert torch.all(v_avoid_3.abs() < 1e-6)
 
-    # --- Case 4: forward command, lateral wall on left (cos > 0, d small) ---
-    # Sector 26 center = 85deg, cos > 0 so the wall is in the forward hemisphere.
-    # u[26] = [cos(85deg), sin(85deg)] = [0.087, 0.996] (left-forward)
-    d_4 = torch.full((1, n_sec), inf)
-    d_4[0, 26] = 0.3  # left wall close
+    # Left wall closer -> push right (vy < 0)
+    # vy = 0.5 * weighted_avg_y = 0.5 * (-0.335) = -0.1675
+    assert v_avoid_3[0, 1].item() < -0.15, \
+        f"should push away from closer left wall, got vy={v_avoid_3[0,1].item():.4f}"
+
+    # --- Case 4: corridor with symmetric walls -> x and y cancel ---
+    d_4 = torch.full((1, n_sec), 1.2)
     active_4 = d_4 < d_max
-    w_4 = (cos + c_val) * torch.exp(-alpha * d_4) * active_4.float()
+    w_4 = torch.exp(-alpha * d_4) * active_4.float()
     w_sum_4 = w_4.sum(dim=1, keepdim=True)
     v_avoid_4 = 0.5 * ((w_4 @ away_dirs) / (w_sum_4 + 1e-6))
 
-    # cos[26] = max(0, [1,0]*[0.087,0.996]) = 0.087, c=0
-    # w = 0.087 * exp(-0.3) = 0.0645
-    expected_w_26 = cos[0, 26].item() * math.exp(-0.3)
-    assert abs(w_4[0, 26].item() - expected_w_26) < 1e-4
-    # Single sector: weighted avg = away_dir[26] = [-0.087, -0.996]
-    assert v_avoid_4[0, 1].item() < 0.0, f"should push right away from left wall, got vy={v_avoid_4[0,1].item():.4f}"
-    assert abs(v_avoid_4.norm().item() - 0.5) < 1e-4
+    # All 36 sectors at same distance -> symmetric cancel, v_avoid ~ zero
+    assert abs(v_avoid_4[0, 0].item()) < 0.05, \
+        f"corridor x should cancel, got vx={v_avoid_4[0,0].item():.4f}"
+    assert abs(v_avoid_4[0, 1].item()) < 0.05, \
+        f"corridor y should cancel, got vy={v_avoid_4[0,1].item():.4f}"
 
-    # --- Case 5: 5-sector lateral wall, weighted avg -> bounded at ||v_cmd|| ---
-    # Sectors 6-10 (span -115deg to -75deg, right side). c=0.
-    # Only sectors 9 (-85deg, cos=0.087) and 10 (-75deg, cos=0.259) have cos > 0.
-    d_5 = torch.full((1, n_sec), inf)
-    for i in range(6, 11):
-        d_5[0, i] = 0.5
+    # --- Case 5: stationary command -> v_avoid = 0 ---
+    d_5 = d_1.clone()  # obstacle at sector 18, d=0.5
     active_5 = d_5 < d_max
-    w_5 = (cos + c_val) * torch.exp(-alpha * d_5) * active_5.float()
+    w_5 = torch.exp(-alpha * d_5) * active_5.float()
     w_sum_5 = w_5.sum(dim=1, keepdim=True)
-    v_avoid_5 = 0.5 * ((w_5 @ away_dirs) / (w_sum_5 + 1e-6))
-    mag_5 = v_avoid_5.norm(dim=1).item()
-    # Weighted average of 2 aligned away_dirs -> near-unit-vector direction,
-    # magnitude <= ||v_cmd|| = 0.5
-    assert 0.45 < mag_5 <= 0.5, \
-        f"weighted avg bounded by ||v_cmd||, got {mag_5:.4f}"
+    v_avoid_5 = 0.0 * ((w_5 @ away_dirs) / (w_sum_5 + 1e-6))
+    assert torch.all(v_avoid_5.abs() < 1e-6)

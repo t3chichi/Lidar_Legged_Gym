@@ -336,31 +336,17 @@ class Go2LidarPDRiskNet(Go2):
             (-torch.cos(sec_centers), -torch.sin(sec_centers)), dim=-1
         )  # (n_sec, 2)
 
-        # Command direction projection per sector: cos_i = max(0, v_cmd_dir · u_i).
-        v_cmd = self.commands[:, :2]                                              # (num_envs, 2)
-        v_cmd_norm = torch.norm(v_cmd, dim=1, keepdim=True)                       # (num_envs, 1)
-        nonzero = (v_cmd_norm.squeeze(1) > 1e-6)                                  # (num_envs,)
 
-        if nonzero.any():
-            v_cmd_dir = v_cmd[nonzero] / v_cmd_norm[nonzero]                      # (N, 2)
-            u = -away_dirs                                                        # (n_sec, 2), sector center directions
-            cos = torch.relu(torch.mm(v_cmd_dir, u.T))                            # (N, n_sec), [0, 1]
+        # Pure distance-weighted avoidance (paper formula): w_i = exp(-alpha * d_i) if d_i < d_max.
+        d_max = float(cfg.avoid_distance_thresh)
+        alpha = float(cfg.avoid_alpha)
+        w = torch.exp(-alpha * min_dist_per_sec) * (min_dist_per_sec < d_max).float()  # (num_envs, n_sec)
 
-            # Weighted urgency: (cos_i + c) * exp(-alpha * d_i) * within_d_max.
-            d = min_dist_per_sec[nonzero]                                          # (N, n_sec)
-            d_max = float(cfg.avoid_distance_thresh)
-            c_val = float(getattr(cfg, "avoid_c", 0.15))
-            alpha = float(cfg.avoid_alpha)
-            w = (cos + c_val) * torch.exp(-alpha * d) * (d < d_max).float()      # (N, n_sec)
-
-            # Weighted average: v_avoid = ||v_cmd|| * sum(w_i * (-u_i)) / sum(w_i).
-            w_sum = w.sum(dim=1, keepdim=True)                                     # (N, 1)
-            v_avoid_nonzero = v_cmd_norm[nonzero] * ((w @ away_dirs) / (w_sum + 1e-6))  # (N, 2)
-
-            self.v_avoid[nonzero] = v_avoid_nonzero
-
-        # Stationary envs: v_avoid = 0.
-        self.v_avoid[~nonzero] = 0.0
+        # Weighted average: v_avoid = ||v_cmd|| * sum(w_i * (-u_i)) / sum(w_i).
+        v_cmd_norm = torch.norm(self.commands[:, :2], dim=1, keepdim=True)        # (num_envs, 1)
+        w_sum = w.sum(dim=1, keepdim=True)                                         # (num_envs, 1)
+        v_avoid_raw = (w @ away_dirs) / (w_sum + 1e-6)                             # (num_envs, 2)
+        self.v_avoid = v_cmd_norm * v_avoid_raw
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
