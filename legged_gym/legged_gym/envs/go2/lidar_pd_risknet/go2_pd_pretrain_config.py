@@ -12,7 +12,9 @@ PD_PROXIMAL_POINTS = 256
 PD_DISTAL_POINTS = 96
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
-PD_PROPRIO_DIM = 48
+HEADING_OBS_ENABLED = True
+
+PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
 PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 # Counts must match the main risknet config (17×11=187) for weight transfer.
@@ -38,6 +40,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = PD_THETA_DEG
+
+        # 观测模式开关及朝向噪声配置
+        heading_obs_enabled = HEADING_OBS_ENABLED
+        heading_noise_enabled = True
+        heading_noise_std = 0.05
 
         n_sectors = 36
         avoid_distance_thresh = 1.0
@@ -80,7 +87,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
-        heading_p_gain = 1.0       # P 增益
+        heading_p_gain = 0.5       # P 增益
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [-1, 1]   # 预训练：静止
@@ -158,7 +165,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
         class obs_scales(Go2RoughCfg.normalization.obs_scales):
-            pass
+            heading = 1.0
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True

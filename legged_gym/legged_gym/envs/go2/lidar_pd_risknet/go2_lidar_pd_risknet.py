@@ -55,10 +55,18 @@ class Go2LidarPDRiskNet(Go2):
         noise_vec[:3] = noise_scales.lin_vel * noise_level * self.obs_scales.lin_vel
         noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
         noise_vec[6:9] = noise_scales.gravity * noise_level
-        noise_vec[9:12] = 0.0
-        noise_vec[12:24] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-        noise_vec[24:36] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
-        noise_vec[36:48] = 0.0
+        noise_vec[9:12] = 0.0  # commands
+
+        if self.cfg.pd_risknet.heading_obs_enabled:
+            noise_vec[12:13] = 0.0  # current_heading: 不额外加噪（已有独立噪声机制）
+            noise_vec[13:25] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+            noise_vec[25:37] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+            noise_vec[37:49] = 0.0  # previous actions
+        else:
+            noise_vec[12:24] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+            noise_vec[24:36] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+            noise_vec[36:48] = 0.0  # previous actions
+
         return noise_vec
 
     def _init_pd_risknet_buffers(self):
@@ -597,15 +605,40 @@ class Go2LidarPDRiskNet(Go2):
 
     def compute_observations(self):
         # Keep base proprio order identical to Go2/LeggedRobot, then append LiDAR history.
-        proprio_obs = torch.cat((
-            self.base_lin_vel * self.obs_scales.lin_vel,
-            self.base_ang_vel * self.obs_scales.ang_vel,
-            self.projected_gravity,
-            self.commands[:, :3] * self.commands_scale,
-            (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-            self.dof_vel * self.obs_scales.dof_vel,
-            self.actions,
-        ), dim=-1)
+        if self.cfg.pd_risknet.heading_obs_enabled:
+            # ── 新观测：heading 目标 + current_heading ──
+            cmd_obs = torch.cat((
+                self.commands[:, 0:1] * self.obs_scales.lin_vel,
+                self.commands[:, 1:2] * self.obs_scales.lin_vel,
+                self.commands[:, 3:4] * self.obs_scales.heading,
+            ), dim=-1)
+
+            forward = quat_apply(self.base_quat, self.forward_vec)
+            current_heading = torch.atan2(forward[:, 1], forward[:, 0])
+            if self.cfg.pd_risknet.heading_noise_enabled:
+                current_heading = current_heading + torch.randn_like(current_heading) * self.cfg.pd_risknet.heading_noise_std
+
+            proprio_obs = torch.cat((
+                self.base_lin_vel * self.obs_scales.lin_vel,
+                self.base_ang_vel * self.obs_scales.ang_vel,
+                self.projected_gravity,
+                cmd_obs,
+                current_heading.unsqueeze(1) * self.obs_scales.heading,
+                (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
+                self.dof_vel * self.obs_scales.dof_vel,
+                self.actions,
+            ), dim=-1)
+        else:
+            # ── 旧观测：P 控制器角速度（兼容已有 checkpoint）──
+            proprio_obs = torch.cat((
+                self.base_lin_vel * self.obs_scales.lin_vel,
+                self.base_ang_vel * self.obs_scales.ang_vel,
+                self.projected_gravity,
+                self.commands[:, :3] * self.commands_scale,
+                (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
+                self.dof_vel * self.obs_scales.dof_vel,
+                self.actions,
+            ), dim=-1)
 
         self.obs_buf = torch.cat((
             proprio_obs,

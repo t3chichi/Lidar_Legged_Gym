@@ -12,7 +12,9 @@ PD_PROXIMAL_POINTS = 256
 PD_DISTAL_POINTS = 96
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
-PD_PROPRIO_DIM = 48
+HEADING_OBS_ENABLED = True
+
+PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
 PD_THETA_DEG = 20.0
 # Height measurement grid: auto-generated from range + count via linspace.
 MEASURED_GRID_X_COUNT = 17
@@ -40,6 +42,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = PD_THETA_DEG
+
+        # 观测模式开关及朝向噪声配置
+        heading_obs_enabled = HEADING_OBS_ENABLED
+        heading_noise_enabled = True
+        heading_noise_std = 0.05
 
         n_sectors = 36
         avoid_distance_thresh = 1.0
@@ -119,7 +126,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
-        heading_p_gain = 1.0     # P 增益
+        heading_p_gain = 0.5     # P 增益
         resampling_time = 2.
         curriculum = False
 
@@ -155,7 +162,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         base_height_target = 0.34
         class scales:
             # Paper main rewards.
-            vel_avoid = 1.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
+            vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
             rays = 1.5  # 距离最大化奖励：鼓励与障碍保持更大安全间距
 
             # Auxiliary rewards from appendix Table 5.
@@ -170,7 +177,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
             tracking_lin_vel = 5.0e-1   
-            tracking_ang_vel = 3.0e-1   
+            tracking_ang_vel = 1.0e-1   
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
@@ -187,7 +194,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class normalization(Go2RoughCfg.normalization):
         # LiDAR points are raw geometric values; keep unscaled.
         class obs_scales(Go2RoughCfg.normalization.obs_scales):
-            pass
+            heading = 1.0
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
