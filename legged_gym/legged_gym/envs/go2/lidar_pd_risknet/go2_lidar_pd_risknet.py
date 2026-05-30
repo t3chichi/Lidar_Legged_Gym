@@ -739,8 +739,13 @@ class Go2LidarPDRiskNet(Go2):
         max_draw = min(4000, num_pts)
         step = max(1, num_pts // max_draw)
 
+        # Exclude sky / no-hit points (d == d_max) from visualization.
+        d_max = float(self.cfg.pd_risknet.ray_max_distance)
+        valid_mask = self.raycast_distances[env_id] < (d_max - 0.001)
+
         # Draw proximal points (yellow)
-        prox_pts = pts_world[prox_mask].cpu().numpy()
+        prox_mask_draw = prox_mask & valid_mask
+        prox_pts = pts_world[prox_mask_draw].cpu().numpy()
         if len(prox_pts) > 0:
             prox_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
             for i in range(0, len(prox_pts), step):
@@ -749,7 +754,8 @@ class Go2LidarPDRiskNet(Go2):
                 gymutil.draw_lines(prox_geom, self.gym, self.viewer, self.envs[env_id], sphere_pose)
 
         # Draw distal points (red)
-        dist_pts = pts_world[dist_mask].cpu().numpy()
+        dist_mask_draw = dist_mask & valid_mask
+        dist_pts = pts_world[dist_mask_draw].cpu().numpy()
         if len(dist_pts) > 0:
             dist_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 0, 0))
             for i in range(0, len(dist_pts), step):
