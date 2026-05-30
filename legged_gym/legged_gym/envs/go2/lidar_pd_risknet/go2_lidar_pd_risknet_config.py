@@ -52,7 +52,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.0
         avoid_alpha = 1.0
         avoid_beta = 1.0
-        avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
+        avoid_speed_limit = 1.2  # 避障速度上界 (m/s)
         ray_max_distance = 50.0  # rays 奖励截断距离 (m)
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
