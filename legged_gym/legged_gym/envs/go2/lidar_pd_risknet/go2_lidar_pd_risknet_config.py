@@ -4,8 +4,8 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 OBS_HISTORY_LENGTH = 1
 PROX_HISTORY_LENGTH = 10
 DIST_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 80
-PD_SPHERICAL_ELEVATION = 50
+PD_SPHERICAL_AZIMUTH = 50
+PD_SPHERICAL_ELEVATION = 30
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 512
@@ -53,7 +53,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_alpha = 1.0
         avoid_beta = 1.0
         avoid_speed_limit = 1.2  # 避障速度上界 (m/s)
-        ray_max_distance = 50.0  # rays 奖励截断距离 (m)
+        ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -186,7 +186,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             #override
             # lin_vel_z = -1.0e-3
 
-            y_progress = 50.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
+            y_progress = 10.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             

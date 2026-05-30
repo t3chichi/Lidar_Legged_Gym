@@ -4,8 +4,8 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 OBS_HISTORY_LENGTH = 1
 PROX_HISTORY_LENGTH = 10
 DIST_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 80
-PD_SPHERICAL_ELEVATION = 50
+PD_SPHERICAL_AZIMUTH = 50
+PD_SPHERICAL_ELEVATION = 30
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 512
@@ -51,7 +51,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_alpha = 1.0
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
-        ray_max_distance = 50.0
+        ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH

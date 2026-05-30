@@ -4,8 +4,8 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 OBS_HISTORY_LENGTH = 1
 PROX_HISTORY_LENGTH = 10
 DIST_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 80
-PD_SPHERICAL_ELEVATION = 50
+PD_SPHERICAL_AZIMUTH = 50
+PD_SPHERICAL_ELEVATION = 30
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
 PD_PROXIMAL_POINTS = 512
@@ -53,7 +53,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         avoid_alpha = 1.0
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
-        ray_max_distance = 50.0  # rays 奖励截断距离 (m)，对齐 raycaster.max_distance
+        ray_max_distance = 10.0  # rays 奖励截断距离 (m)，对齐 raycaster.max_distance
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -174,7 +174,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
             ang_vel_xy = -5.0e-2
             base_height = -2.0
             orientation = -0.0
-            move_distance = 50.0  # pillar 地形：鼓励远离出生点
+            move_distance = 10.0  # pillar 地形：鼓励远离出生点
             #override
             # lin_vel_z = -1.0e-3
       
