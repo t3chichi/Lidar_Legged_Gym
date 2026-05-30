@@ -365,6 +365,15 @@ class Go2LidarPDRiskNet(Go2):
 
         self.v_avoid = (w.unsqueeze(-1) * away_dirs.unsqueeze(0)).sum(dim=1)  # (num_envs, 2)
 
+        # Clamp avoidance speed to configurable limit.
+        max_avoid = float(getattr(cfg, "avoid_speed_limit", 1.0))
+        avoid_norm = torch.norm(self.v_avoid, dim=1, keepdim=True)
+        self.v_avoid = torch.where(
+            avoid_norm > max_avoid,
+            self.v_avoid * max_avoid / avoid_norm,
+            self.v_avoid,
+        )
+
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
 
