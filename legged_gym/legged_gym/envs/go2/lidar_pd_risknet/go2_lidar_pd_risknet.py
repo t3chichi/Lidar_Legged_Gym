@@ -37,6 +37,8 @@ class Go2LidarPDRiskNet(Go2):
         ]
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
+        if self.lidar_sensor is not None:
+            self._init_lidar_aux()
         if not hasattr(self, '_spawn_angles'):
             self._spawn_angles = None
 
@@ -119,43 +121,25 @@ class Go2LidarPDRiskNet(Go2):
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
 
-        # Precompute distal ray mask from spherical grid geometry.
-        # The LiDAR sensor uses a SIMPLE_GRID pattern: elevation x azimuth, flattened
-        # row-major. In the sensor frame, theta = elevation angle. Rays with
-        # theta < split_theta_deg are distal (far-field), the rest are proximal.
-        num_azimuth = int(cfg.spherical_num_azimuth)
-        num_elevation = int(cfg.spherical_num_elevation)
-        v_min_rad = math.radians(float(getattr(self.cfg.raycaster, "vertical_fov_deg_min", -2.0)))
-        v_max_rad = math.radians(float(getattr(self.cfg.raycaster, "vertical_fov_deg_max", 57.0)))
+        # Precompute distal ray mask and sector ids from sensor ray directions.
+        # This is deferred to _init_lidar_aux() after _init_lidar_sensor().
+
+    def _init_lidar_aux(self):
+        """Post-init: compute auxiliary structures from LidarSensor ray directions."""
+        cfg = self.cfg.pd_risknet
         split_rad = math.radians(float(cfg.split_theta_deg))
 
-        # Elevation descends from v_max to v_min (matching _initialize_grid_rays ordering).
-        elev_rad = torch.linspace(v_max_rad, v_min_rad, num_elevation, device=self.device)
-        distal_lines = elev_rad < split_rad  # (num_elevation,)
-        distal_mask_2d = distal_lines.unsqueeze(1).expand(num_elevation, num_azimuth)
-        self._distal_mask = distal_mask_2d.contiguous().reshape(-1)  # (num_lidar_points,)
+        self._ray_dirs_sensor = self.lidar_sensor.get_ray_directions()
+        theta = torch.atan2(
+            self._ray_dirs_sensor[:, 2],
+            torch.linalg.norm(self._ray_dirs_sensor[:, :2], dim=1) + 1e-8,
+        )
+        self._distal_mask = theta < split_rad
         if self._distal_mask.sum() == 0:
             raise ValueError(
-                f"No distal rays found: split_theta_deg={float(cfg.split_theta_deg):.1f}° "
-                f"but vertical FOV min={float(self.cfg.raycaster.vertical_fov_deg_min):.1f}°. "
-                f"Lower split_theta_deg or decrease vertical_fov_deg_min.")
+                f"No distal rays found: split_theta_deg={float(cfg.split_theta_deg):.1f}°."
+            )
 
-        # Precompute ray direction vectors in sensor frame for no-hit point correction.
-        # Matches LidarSensor._initialize_grid_rays spherical grid pattern.
-        h_fov_min = math.radians(-180.0)
-        h_fov_max = math.radians(180.0)
-        ray_dirs = torch.empty((num_elevation, num_azimuth, 3), device=self.device, dtype=torch.float)
-        for i in range(num_elevation):
-            elev = v_max_rad - (v_max_rad - v_min_rad) * i / (num_elevation - 1)
-            for j in range(num_azimuth):
-                az = h_fov_max - (h_fov_max - h_fov_min) * j / (num_azimuth - 1)
-                ray_dirs[i, j, 0] = math.cos(az) * math.cos(elev)
-                ray_dirs[i, j, 1] = math.sin(az) * math.cos(elev)
-                ray_dirs[i, j, 2] = math.sin(elev)
-        self._ray_dirs_sensor = ray_dirs.reshape(-1, 3)  # (num_lidar_points, 3)
-        self._ray_dirs_sensor = self._ray_dirs_sensor / torch.norm(self._ray_dirs_sensor, dim=1, keepdim=True)
-
-        # Precompute which 10° sector each distal ray belongs to.
         ray_azimuth = torch.atan2(
             self._ray_dirs_sensor[:, 1],
             self._ray_dirs_sensor[:, 0],
@@ -275,7 +259,6 @@ class Go2LidarPDRiskNet(Go2):
         if self.lidar_sensor is None:
             return
 
-        # Keep sensor attached to base with configurable translation offset.
         self.sensor_quat_tensor.copy_(quat_mul(self.base_quat, self._sensor_offset_quat))
         self.sensor_pos_tensor.copy_(self.base_pos + quat_apply(self.base_quat, self._sensor_translation))
 
@@ -283,23 +266,15 @@ class Go2LidarPDRiskNet(Go2):
         points_sensor = lidar_points.view(self.num_envs, -1, 3)
         n_points = points_sensor.shape[1]
         dist = lidar_dist.view(self.num_envs, -1)
-        valid = dist > 0.0
         max_dist = float(self.cfg.pd_risknet.ray_max_distance)
 
-        # Fix no-hit rays: Warp returns (0,0,0) points — replace them with max_dist
-        # along the expected ray direction. Uses sparse indexing to avoid materializing
-        # a full (num_envs × n_points × 3) tensor when only a few rays miss.
-        invalid_mask = ~valid
-        if invalid_mask.any():
-            env_ids, pt_ids = torch.where(invalid_mask)
-            points_sensor[env_ids, pt_ids] = self._ray_dirs_sensor[pt_ids] * max_dist
+        # Sensor frame → base frame transform (expand avoids 98 MB repeat alloc).
+        quat_1x4 = self._sensor_offset_quat[0:1]
+        n_total = int(points_sensor.numel() // 3)
+        points_base = quat_apply(quat_1x4.expand(n_total, 4), points_sensor.reshape(-1, 3))
+        points_base = points_base.reshape(self.num_envs, n_points, 3) + self._sensor_translation.unsqueeze(1)
 
-        sensor_quat_repeat = self._sensor_offset_quat.unsqueeze(1).repeat(1, n_points, 1).reshape(-1, 4)
-        points_base = quat_apply(sensor_quat_repeat, points_sensor.reshape(-1, 3)).reshape(self.num_envs, n_points, 3)
-        points_base = points_base + self._sensor_translation.unsqueeze(1)
-        dist = torch.where(valid, dist, torch.full_like(dist, max_dist))
-
-        # === 通路 A：避障用 — 仅地面滤除，不经过域随机化 ===
+        # 通路 A: 避障 — 干净数据，仅做地面滤除。
         env_ids_per_point = torch.arange(self.num_envs, device=self.device).repeat_interleave(n_points)
         quat_per_point = self.base_quat[env_ids_per_point]
         clean_base_flat = points_base.clone().view(-1, 3)
@@ -308,7 +283,7 @@ class Go2LidarPDRiskNet(Go2):
         clean_is_ground = torch.abs(clean_world[..., 2]) < 0.05
         self.avoid_distances.copy_(torch.where(clean_is_ground, torch.full_like(dist, max_dist), dist))
 
-        # === 通路 B：网络用 — 仅域随机化，保留真实地面几何 ===
+        # 通路 B: 网络观测 — 域随机化。
         mask_ratio = float(getattr(self.cfg.domain_rand, "lidar_point_mask_ratio", 0.0))
         if mask_ratio > 0.0:
             rand_mask = torch.rand_like(dist) < mask_ratio
@@ -338,14 +313,11 @@ class Go2LidarPDRiskNet(Go2):
         angles = torch.atan2(pts[..., 1], pts[..., 0])
         sec_ids = torch.floor((angles + math.pi) / sec_size).long().clamp(min=0, max=n_sec - 1)
 
-        # Per-sector minimum distance (unchanged).
-        inf = torch.full_like(dist, 1.0e9)
-        min_dist_per_sec = []
-        for sec in range(n_sec):
-            sec_vals = torch.where(sec_ids == sec, dist, inf)
-            sec_min = torch.min(sec_vals, dim=1).values
-            min_dist_per_sec.append(sec_min)
-        min_dist_per_sec = torch.stack(min_dist_per_sec, dim=1)  # (num_envs, n_sec)
+        # Per-sector minimum: single scatter_reduce replaces 36× for loop + where.
+        min_dist_per_sec = torch.full(
+            (dist.shape[0], n_sec), 1e9, device=dist.device, dtype=dist.dtype)
+        min_dist_per_sec.scatter_reduce_(
+            1, sec_ids, dist, reduce='amin', include_self=False)
 
         # Sector center directions pointing AWAY from each sector.
         sec_centers = torch.linspace(
