@@ -4,12 +4,12 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 OBS_HISTORY_LENGTH = 1
 PROX_HISTORY_LENGTH = 10
 DIST_HISTORY_LENGTH = 10
-PD_SPHERICAL_AZIMUTH = 36
-PD_SPHERICAL_ELEVATION = 24
+PD_SPHERICAL_AZIMUTH = 80
+PD_SPHERICAL_ELEVATION = 50
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 # Prefer denser near-field sampling for collision avoidance cues.
-PD_PROXIMAL_POINTS = 256
-PD_DISTAL_POINTS = 96
+PD_PROXIMAL_POINTS = 512
+PD_DISTAL_POINTS = 256
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 HEADING_OBS_ENABLED = True
@@ -50,7 +50,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.0
         avoid_alpha = 1.0
         avoid_beta = 1.0
-        ray_max_distance = 10.0
+        ray_max_distance = 50.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -107,7 +107,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         ray_pattern = "spherical"
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
-        max_distance = 10.0
+        max_distance = 50.0
         attach_yaw_only = False
         vertical_fov_deg_min = -2.0   # sensor frame 垂直 FOV 下限 (deg)
         vertical_fov_deg_max = 57.0   # sensor frame 垂直 FOV 上限 (deg)
