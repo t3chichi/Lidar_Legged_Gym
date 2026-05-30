@@ -345,16 +345,14 @@ class Go2LidarPDRiskNet(Go2):
         )  # (n_sec, 2)
 
 
-        # Pure distance-weighted avoidance (paper formula): w_i = exp(-alpha * d_i) if d_i < d_max.
+        # Pure distance-weighted vector sum (paper V1 formula):
+        # w_i = exp(-alpha * d_i) if d_i < d_max.
+        # v_avoid = sum(w_i * away_dir_i) over all sectors.
         d_max = float(cfg.avoid_distance_thresh)
         alpha = float(cfg.avoid_alpha)
         w = torch.exp(-alpha * min_dist_per_sec) * (min_dist_per_sec < d_max).float()  # (num_envs, n_sec)
 
-        # Weighted average: v_avoid = ||v_cmd|| * sum(w_i * (-u_i)) / sum(w_i).
-        v_cmd_norm = torch.norm(self.commands[:, :2], dim=1, keepdim=True)        # (num_envs, 1)
-        w_sum = w.sum(dim=1, keepdim=True)                                         # (num_envs, 1)
-        v_avoid_raw = (w @ away_dirs) / (w_sum + 1e-6)                             # (num_envs, 2)
-        self.v_avoid = v_cmd_norm * v_avoid_raw
+        self.v_avoid = (w.unsqueeze(-1) * away_dirs.unsqueeze(0)).sum(dim=1)  # (num_envs, 2)
 
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
