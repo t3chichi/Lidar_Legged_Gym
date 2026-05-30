@@ -552,9 +552,33 @@ class Go2LidarPDRiskNet(Go2):
 
     def _reward_rays(self):
         d_max = float(self.cfg.pd_risknet.ray_max_distance)
-        dist = self.raycast_distances[:, self._distal_mask]
-        clipped = torch.clamp(dist, max=d_max)
-        return torch.mean(clipped / d_max, dim=1)
+        dist_all = self.raycast_distances[:, self._distal_mask]  # (N, num_distal_raw)
+        valid = dist_all < (d_max - 0.001)  # exclude sky / no-hit rays at d_max
+        dist = torch.where(valid, dist_all, torch.zeros_like(dist_all))
+
+        n_sectors = 36
+        top_ratio = 0.25
+
+        sector_means = []
+        for s in range(n_sectors):
+            s_mask = self._distal_ray_sector_ids == s  # (num_distal_raw,)
+            s_dist = dist[:, s_mask]                    # (N, rays_in_sector)
+            s_valid = valid[:, s_mask]
+
+            n_valid = s_valid.sum(dim=1, keepdim=True).clamp(min=1).float()  # (N, 1)
+            k = torch.clamp((n_valid * top_ratio).long(), min=1)            # (N, 1)
+            k_max = int(k.max().item())
+
+            top_vals, _ = torch.topk(s_dist, k=k_max, dim=1)  # (N, k_max)
+
+            idx = torch.arange(k_max, device=s_dist.device).unsqueeze(0).expand_as(top_vals)
+            keep = idx < k
+            top_sum = (top_vals * keep.float()).sum(dim=1)  # (N,)
+            sector_mean = top_sum / k.squeeze(1)            # (N,)
+            sector_means.append(sector_mean)
+
+        sector_mean = torch.stack(sector_means, dim=1)  # (N, 36)
+        return sector_mean.mean(dim=1) / d_max
 
     def _reward_y_progress(self):
         step_delta = self.base_pos[:, 1] - self.last_y
