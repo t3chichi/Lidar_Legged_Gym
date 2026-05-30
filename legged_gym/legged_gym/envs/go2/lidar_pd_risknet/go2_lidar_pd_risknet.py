@@ -155,6 +155,17 @@ class Go2LidarPDRiskNet(Go2):
         self._ray_dirs_sensor = ray_dirs.reshape(-1, 3)  # (num_lidar_points, 3)
         self._ray_dirs_sensor = self._ray_dirs_sensor / torch.norm(self._ray_dirs_sensor, dim=1, keepdim=True)
 
+        # Precompute which 10° sector each distal ray belongs to.
+        ray_azimuth = torch.atan2(
+            self._ray_dirs_sensor[:, 1],
+            self._ray_dirs_sensor[:, 0],
+        )
+        ray_azimuth_0_2pi = ray_azimuth + math.pi
+        sector_size = 2.0 * math.pi / 36.0
+        self._distal_ray_sector_ids = torch.floor(
+            ray_azimuth_0_2pi[self._distal_mask] / sector_size
+        ).long().clamp(min=0, max=35)
+
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
             self.lidar_sensor = None
