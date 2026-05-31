@@ -49,10 +49,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_noise_std = 0.05
 
         n_sectors = 36
-        avoid_distance_thresh = 1.0
-        avoid_alpha = 1.0
+        avoid_distance_thresh = 1.5
+        avoid_alpha = 3.0
         avoid_beta = 1.0
-        avoid_speed_limit = 1.2  # 避障速度上界 (m/s)
+        avoid_speed_limit = 1.5  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -133,7 +133,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # heading_command = False
 
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.4, 0.8]  # min max [m/s]
+            lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
             heading = [0.87, 2.27]

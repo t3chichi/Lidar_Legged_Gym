@@ -333,7 +333,8 @@ class Go2LidarPDRiskNet(Go2):
         # v_avoid = sum(w_i * away_dir_i) over all sectors.
         d_max = float(cfg.avoid_distance_thresh)
         alpha = float(cfg.avoid_alpha)
-        w = torch.exp(-alpha * min_dist_per_sec) * (min_dist_per_sec < d_max).float()  # (num_envs, n_sec)
+        exp_max = math.exp(-alpha * d_max)           # Python float，只算一次
+        w = torch.relu(torch.exp(-alpha * min_dist_per_sec) - exp_max)
 
         self.v_avoid = (w.unsqueeze(-1) * away_dirs.unsqueeze(0)).sum(dim=1)  # (num_envs, 2)
 
