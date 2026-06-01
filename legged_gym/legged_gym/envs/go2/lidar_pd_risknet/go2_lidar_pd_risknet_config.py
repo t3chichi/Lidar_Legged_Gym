@@ -54,6 +54,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_beta = 1.0
         avoid_speed_limit = 1.5  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
+        ray_forward_sector_count = 12     # rays 奖励使用的前方扇区数（扇区18=正前方，12扇区=±60°）
+        ray_forward_sector_center = 18    # 前方扇区中轴索引（传感器+X→机器人+X）
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -130,7 +132,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         resampling_time = 2.
         curriculum = False
 
-        # heading_command = False
+        heading_command = False
 
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.5, 1.0]  # min max [m/s]
@@ -186,7 +188,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             #override
             # lin_vel_z = -1.0e-3
 
-            y_progress = 10.0  # 世界坐标系 Y 进度奖励，鼓励沿走廊持续前进
+            y_progress = 0.0   # 消融实验：清零，验证 forward-sector rays 方向梯度是否足够
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             
