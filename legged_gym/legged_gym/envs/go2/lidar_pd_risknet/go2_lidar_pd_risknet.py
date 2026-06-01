@@ -560,7 +560,11 @@ class Go2LidarPDRiskNet(Go2):
             sector_means.append(sector_mean)
 
         sector_mean = torch.stack(sector_means, dim=1)  # (N, 36)
-        return sector_mean.mean(dim=1) / d_max
+        n_fwd = int(self.cfg.pd_risknet.ray_forward_sector_count)
+        center = int(self.cfg.pd_risknet.ray_forward_sector_center)
+        start = center - n_fwd // 2
+        end = start + n_fwd
+        return sector_mean[:, start:end].mean(dim=1) / d_max
 
     def _reward_y_progress(self):
         step_delta = self.base_pos[:, 1] - self.last_y
