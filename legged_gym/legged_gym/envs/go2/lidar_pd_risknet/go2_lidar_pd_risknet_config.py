@@ -132,7 +132,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         resampling_time = 2.
         curriculum = False
 
-        heading_command = False
+        # heading_command = False
 
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.5, 1.0]  # min max [m/s]
