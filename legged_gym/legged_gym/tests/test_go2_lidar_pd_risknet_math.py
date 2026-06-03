@@ -1,6 +1,7 @@
 import math
 
 import pytest
+import legged_gym.envs  # Pre-import to break circular dependency chain
 
 
 def vel_avoid_reward(v_t, v_cmd, v_avoid, beta_va):

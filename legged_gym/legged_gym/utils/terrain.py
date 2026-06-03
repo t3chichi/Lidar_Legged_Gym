@@ -498,6 +498,159 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     return terrain
 
 
+def trapezoid_corridor_terrain(terrain, difficulty, cfg):
+    """Generate trapezoid-wave corridor terrain with two alternating bends.
+
+    Corridor centerline (5 segments, all point-to-point straight):
+        Segment 1 (entry):  north (+Y) from midline
+        Segment 2 (diag 1): diagonal at angle theta (left or right)
+        Segment 3 (middle): north (+Y), offset from midline
+        Segment 4 (diag 2): diagonal opposite angle, returns to midline
+        Segment 5 (exit):   north (+Y) on midline
+
+    Configurable parameters (via cfg):
+        corridor_width:      corridor width (m), default 3.0
+        wall_height:         wall height (m), default 1.5
+        wall_thickness:      wall thickness (m), default 2.0
+        turn_angle_deg_max:  max turn angle in degrees (mapped by difficulty)
+        diagonal_length:     length of diagonal turn segment (m)
+        terrain_length:      terrain patch length (m)
+        terrain_width:       terrain patch width (m)
+        end_margin:          margin at start/end of corridor (m)
+        _first_turn_left:    if True, L-R pattern; if False, R-L pattern
+    """
+    corridor_width = float(getattr(cfg, "corridor_width", 3.0))
+    wall_height = float(getattr(cfg, "wall_height", 1.5))
+    wall_thickness = float(getattr(cfg, "wall_thickness", 2.0))
+    turn_angle_deg_max = float(getattr(cfg, "turn_angle_deg_max", 55.0))
+    diagonal_length = float(getattr(cfg, "diagonal_length", 3.0))
+    terrain_len = float(getattr(cfg, "terrain_length", 15.0))
+    terrain_width_cfg = float(getattr(cfg, "terrain_width", terrain_len))
+    end_margin = float(getattr(cfg, "end_margin", 0.5))
+    first_turn_left = getattr(cfg, "_first_turn_left", True)
+
+    hs = terrain.horizontal_scale
+    vs = terrain.vertical_scale
+
+    corridor_width_px = int(corridor_width / hs)
+    wall_height_px = int(wall_height / vs)
+    half_cw = corridor_width_px // 2
+    end_margin_px = int(end_margin / hs)
+    diagonal_px = int(diagonal_length / hs)
+
+    size_x = terrain.width
+    size_y = terrain.length
+    mid_x = (size_x - 1) / 2.0
+
+    # Turn angle from difficulty
+    turn_angle_rad = np.deg2rad(difficulty * turn_angle_deg_max)
+
+    # Sign: -1 = turn left first (L-R), +1 = turn right first (R-L)
+    sign = -1.0 if first_turn_left else 1.0
+    sin_t = np.sin(turn_angle_rad)
+    cos_t = np.cos(turn_angle_rad)
+
+    # Corridor start/end Y positions (same as old curved corridor)
+    y_start = half_cw + end_margin_px
+    y_end = size_y - half_cw - end_margin_px
+    available_y = y_end - y_start
+
+    # Total Y consumed by diagonal segments
+    diag_y = 2.0 * diagonal_px * cos_t
+
+    # Remaining Y for straight segments: entry=L1, middle=2*L1, exit=L1
+    # Total straight Y = 4*L1
+    if available_y <= diag_y + 4:
+        # Not enough room — fall back to straight corridor
+        L1 = max(1, (available_y - 4) // 4)
+        diag_y = 0.0
+        diagonal_px = 0
+    else:
+        L1 = int((available_y - diag_y) / 4.0)
+
+    # Centerline waypoints (pixel coords)
+    # P0: corridor entrance (bottom), P1: end of entry straight
+    # P2: end of first diagonal, P3: end of middle straight (north, offset)
+    # P4: end of second diagonal (back to midline), P5: corridor exit (top)
+
+    P0_y = y_start
+    P1_y = P0_y + L1
+    P1_x = float(mid_x)
+
+    P2_x = P1_x + sign * diagonal_px * sin_t
+    P2_y = P1_y + diagonal_px * cos_t
+
+    P3_x = P2_x
+    P3_y = P2_y + 2.0 * L1
+
+    P4_x = float(mid_x)
+    P4_y = P3_y + diagonal_px * cos_t
+
+    P5_y = P4_y + L1
+
+    # Build coordinate grids
+    x_coord, y_coord = np.meshgrid(
+        np.arange(size_x, dtype=np.float64),
+        np.arange(size_y, dtype=np.float64),
+        indexing='ij',
+    )
+
+    # Compute distance from each pixel to the centerline polyline
+    # Pixel is in corridor if within half_cw of ANY segment
+
+    segments = [
+        (P1_x, P0_y, P1_x, P1_y),                    # seg 1: entry straight (vertical)
+        (P1_x, P1_y, P2_x, P2_y),                     # seg 2: first diagonal
+        (P2_x, P2_y, P3_x, P3_y),                     # seg 3: middle straight (vertical)
+        (P3_x, P3_y, P4_x, P4_y),                     # seg 4: second diagonal
+        (P4_x, P4_y, P4_x, P5_y),                     # seg 5: exit straight (vertical)
+    ]
+
+    # Start with no corridor floor
+    in_corridor = np.zeros((size_x, size_y), dtype=bool)
+
+    for (sx0, sy0, sx1, sy1) in segments:
+        dx = sx1 - sx0
+        dy = sy1 - sy0
+        seg_len_sq = dx * dx + dy * dy
+        if seg_len_sq < 1e-9:
+            continue
+
+        # Projection parameter t = dot(P-A, B-A) / |B-A|^2
+        t = ((x_coord - sx0) * dx + (y_coord - sy0) * dy) / seg_len_sq
+        t_clamped = np.clip(t, 0.0, 1.0)
+
+        # Closest point on segment
+        cx = sx0 + t_clamped * dx
+        cy = sy0 + t_clamped * dy
+
+        # Perpendicular distance
+        perp = np.sqrt((x_coord - cx) ** 2 + (y_coord - cy) ** 2)
+
+        in_corridor |= (perp <= float(half_cw))
+
+    # Clip to terrain bounds (leave 1px wall border)
+    in_corridor &= (x_coord >= 1) & (x_coord < size_x - 1)
+    in_corridor &= (y_coord >= 1) & (y_coord < size_y - 1)
+
+    # Initialize: all walls, corridor = floor
+    terrain.height_field_raw[:, :] = wall_height_px
+    terrain.height_field_raw[in_corridor] = 0
+
+    # Goal info (relative to env_origin, which is at corridor entrance center)
+    cfg.goal_offset_x = 0.0  # always centered for trapezoid
+    cfg.goal_offset_y = float(terrain_len) - corridor_width - 2.0 * end_margin
+    goal_forward_margin = float(getattr(cfg, "goal_forward_margin", 0.0))
+    if goal_forward_margin > 0:
+        cfg.goal_offset_y -= goal_forward_margin
+    cfg.goal_radius = float(getattr(cfg, "goal_radius", corridor_width / 2.0))
+
+    # Spawn always facing +Y (pi/2 from +X axis)
+    terrain.spawn_angle = np.pi / 2.0
+
+    return terrain
+
+
 def _draw_circle(cx, cy, radius, width, length):
     """在指定尺寸的画布上生成圆形区域的像素索引。"""
     y, x = np.ogrid[:width, :length]
