@@ -87,7 +87,7 @@ class Terrain:
             choice = np.random.uniform(0, 1)
             difficulty = np.random.choice([0.5, 0.75, 0.9]) * difficulty_scale
             if hasattr(self.cfg, "turn_angle_deg_max"):
-                self.cfg._first_turn_left = (j % 2 == 0)
+                self.cfg._first_turn_left = ((i + j) % 2 == 0)
             terrain = self.make_terrain(choice, difficulty)
             self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
@@ -99,7 +99,7 @@ class Terrain:
                 choice = j / self.cfg.num_cols + 0.001
 
                 if hasattr(self.cfg, "turn_angle_deg_max"):
-                    self.cfg._first_turn_left = (j % 2 == 0)
+                    self.cfg._first_turn_left = ((i + j) % 2 == 0)
                 terrain = self.make_terrain(choice, difficulty)
                 self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
