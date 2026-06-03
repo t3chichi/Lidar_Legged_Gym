@@ -106,25 +106,15 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         num_cols = 4
           
 
-        # 弯曲通道地形配置
+        # 梯形波弯曲通道地形配置
         corridor_width = 3.0       # 通道宽度 (m)
         wall_height = 1.5          # 墙壁高度 (m)
-        wall_thickness = 2       # 墙壁厚度 (m)
-        amplitude = 1.0            # 正弦波振幅 (m)
-        num_cycles = 1.5           # 正弦波周期数
-        alternate_sign = True      # 按地块索引交替反转振幅符号
+        wall_thickness = 2         # 墙壁厚度 (m)
+        turn_angle_deg_max = 55.0  # 最大转弯角度 (deg), 课程从 0° 到 55°
+        diagonal_length = 3.0      # 转弯斜段长度 (m)
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
-        straight_length = 1.0      # 起点直线段长度 (m)，先补齐两壁长度差再延伸此长度
         goal_forward_margin = 0.6  # 终点向前挪动距离 (m)
         goal_radius = 1.6          # 终点半径 (m)
-
-        # 通道内随机方柱
-        pillar_count = 0          # 每通道柱子数量
-        pillar_half_width = 0.2   # 柱子半宽 (m)
-        pillar_min_separation = 3  # 柱子间最小净距 (m)
-        pillar_wall_margin = 0.8   # 柱子与墙最小净距 (m)
-        pillar_centerline_margin = 0.4  # 柱子与中心线最小距离 (m)
-        pillar_margin_end = 4.0    # 柱子距两端半圆圆心最小距离 (m)
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
