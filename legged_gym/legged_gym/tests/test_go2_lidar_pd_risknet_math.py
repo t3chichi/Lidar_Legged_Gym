@@ -348,3 +348,135 @@ def test_v_avoid_guided_formula():
     w_sum_5 = w_5.sum(dim=1, keepdim=True)
     v_avoid_5 = 0.0 * ((w_5 @ away_dirs) / (w_sum_5 + 1e-6))
     assert torch.all(v_avoid_5.abs() < 1e-6)
+
+
+def test_trapezoid_corridor_geometry():
+    """Verify trapezoid corridor centerline returns to midline and faces +Y."""
+    import numpy as np
+    import math
+    from legged_gym.utils.terrain import trapezoid_corridor_terrain
+    from isaacgym import terrain_utils
+
+    hs = 0.1  # horizontal_scale
+    vs = 1.0  # vertical_scale
+    size = 150  # pixels for 15m terrain
+
+    terrain = terrain_utils.SubTerrain("test", width=size, length=size,
+                         vertical_scale=vs, horizontal_scale=hs)
+
+    class Cfg:
+        corridor_width = 3.0
+        wall_height = 1.5
+        wall_thickness = 2.0
+        turn_angle_deg_max = 55.0
+        diagonal_length = 3.0
+        terrain_length = 15.0
+        terrain_width = 15.0
+        end_margin = 0.5
+        goal_forward_margin = 0.6
+        goal_radius = 1.6
+        curriculum = False
+        _first_turn_left = True
+
+    cfg = Cfg()
+    trapezoid_corridor_terrain(terrain, difficulty=0.5, cfg=cfg)
+
+    # spawn_angle must be pi/2 (facing +Y)
+    assert abs(terrain.spawn_angle - math.pi / 2) < 1e-6, \
+        f"Expected spawn_angle=pi/2, got {terrain.spawn_angle}"
+
+    # goal_offset_x must be 0 (centered)
+    assert cfg.goal_offset_x == 0.0, \
+        f"Expected goal_offset_x=0, got {cfg.goal_offset_x}"
+
+    # goal_offset_y must be positive
+    assert cfg.goal_offset_y > 0, \
+        f"Expected goal_offset_y > 0, got {cfg.goal_offset_y}"
+
+
+def test_trapezoid_corridor_lr_rl_mirror():
+    """L-R and R-L corridors should be mirror images across the midline."""
+    import numpy as np
+    import math
+    from legged_gym.utils.terrain import trapezoid_corridor_terrain
+    from isaacgym import terrain_utils
+
+    hs = 0.1
+    vs = 1.0
+    size = 150
+
+    class Cfg:
+        corridor_width = 3.0
+        wall_height = 1.5
+        wall_thickness = 2.0
+        turn_angle_deg_max = 45.0
+        diagonal_length = 3.0
+        terrain_length = 15.0
+        terrain_width = 15.0
+        end_margin = 0.5
+        goal_forward_margin = 0.0
+        goal_radius = 1.6
+        curriculum = False
+
+    cfg_lr = Cfg()
+    cfg_lr._first_turn_left = True
+    terrain_lr = terrain_utils.SubTerrain("lr", width=size, length=size,
+                            vertical_scale=vs, horizontal_scale=hs)
+    trapezoid_corridor_terrain(terrain_lr, difficulty=0.5, cfg=cfg_lr)
+
+    cfg_rl = Cfg()
+    cfg_rl._first_turn_left = False
+    terrain_rl = terrain_utils.SubTerrain("rl", width=size, length=size,
+                            vertical_scale=vs, horizontal_scale=hs)
+    trapezoid_corridor_terrain(terrain_rl, difficulty=0.5, cfg=cfg_rl)
+
+    # Mirror across X midline: hf_lr[x, y] should equal hf_rl[size-1-x, y]
+    hf_lr = terrain_lr.height_field_raw
+    hf_rl = terrain_rl.height_field_raw
+    hf_rl_mirrored = hf_rl[::-1, :]  # flip along X axis
+    assert np.array_equal(hf_lr, hf_rl_mirrored), \
+        "L-R and R-L corridors should be X-mirror images"
+
+
+def test_trapezoid_corridor_level0_straight():
+    """Difficulty 0 (turn_angle=0) should produce a straight north corridor."""
+    import numpy as np
+    from legged_gym.utils.terrain import trapezoid_corridor_terrain
+    from isaacgym import terrain_utils
+
+    hs = 0.1
+    vs = 1.0
+    size = 150
+
+    class Cfg:
+        corridor_width = 3.0
+        wall_height = 1.5
+        wall_thickness = 2.0
+        turn_angle_deg_max = 55.0
+        diagonal_length = 3.0
+        terrain_length = 15.0
+        terrain_width = 15.0
+        end_margin = 0.5
+        goal_forward_margin = 0.0
+        goal_radius = 1.6
+        curriculum = False
+        _first_turn_left = True
+
+    cfg = Cfg()
+    terrain = terrain_utils.SubTerrain("straight", width=size, length=size,
+                         vertical_scale=vs, horizontal_scale=hs)
+    trapezoid_corridor_terrain(terrain, difficulty=0.0, cfg=cfg)
+
+    hf = terrain.height_field_raw
+    mid_x = size // 2
+
+    # At the midline, the corridor should be floor (0) from y_start to y_end
+    half_cw = int(3.0 / hs // 2)
+    y_start = half_cw + int(0.5 / hs)
+    y_end = size - half_cw - int(0.5 / hs)
+
+    # Midline column should have floor in corridor region
+    floor_pixels = (hf[mid_x, y_start:y_end] == 0).sum()
+    total_pixels = y_end - y_start
+    assert floor_pixels > 0.9 * total_pixels, \
+        f"Expected mostly floor at midline, got {floor_pixels}/{total_pixels}"
