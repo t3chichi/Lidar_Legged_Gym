@@ -185,8 +185,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             ang_vel_xy = -5.0e-2
             base_height = -2.0
             orientation = -2.0
+
             #override
             # lin_vel_z = -1.0e-3
+            tracking_lin_vel = 2.0e-1
 
             y_progress = 0.0   # 消融实验：清零，验证 forward-sector rays 方向梯度是否足够
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
