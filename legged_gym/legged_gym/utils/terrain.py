@@ -86,8 +86,8 @@ class Terrain:
 
             choice = np.random.uniform(0, 1)
             difficulty = np.random.choice([0.5, 0.75, 0.9]) * difficulty_scale
-            if getattr(self.cfg, "alternate_sign", False):
-                self.cfg._sign_parity = (i + j) % 2
+            if hasattr(self.cfg, "turn_angle_deg_max"):
+                self.cfg._first_turn_left = (j % 2 == 0)
             terrain = self.make_terrain(choice, difficulty)
             self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
@@ -98,8 +98,8 @@ class Terrain:
                 difficulty = i / self.cfg.num_rows * difficulty_scale
                 choice = j / self.cfg.num_cols + 0.001
 
-                if getattr(self.cfg, "alternate_sign", False):
-                    self.cfg._sign_parity = (i + j) % 2
+                if hasattr(self.cfg, "turn_angle_deg_max"):
+                    self.cfg._first_turn_left = (j % 2 == 0)
                 terrain = self.make_terrain(choice, difficulty)
                 self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
@@ -161,7 +161,7 @@ class Terrain:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
 
         elif choice < self.proportions[7]:
-            curved_corridor_terrain(terrain, difficulty, self.cfg)
+            trapezoid_corridor_terrain(terrain, difficulty, self.cfg)
 
         elif choice < self.proportions[8]:
             pillar_field_terrain(terrain, difficulty, self.cfg)
