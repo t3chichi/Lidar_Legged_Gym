@@ -178,7 +178,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 5.0e-1   
+            # tracking_lin_vel = 5.0e-1   
             tracking_ang_vel = 2.0e-1   
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
@@ -188,7 +188,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #override
             # lin_vel_z = -1.0e-3
-            tracking_lin_vel = 2.0e-1
+            tracking_lin_vel = 0.0
+            collision = -2.0e-2
 
             y_progress = 0.0   # 消融实验：清零，验证 forward-sector rays 方向梯度是否足够
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）

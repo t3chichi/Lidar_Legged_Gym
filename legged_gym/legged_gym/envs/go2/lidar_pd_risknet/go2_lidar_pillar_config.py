@@ -55,6 +55,9 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)，对齐 raycaster.max_distance
 
+        ray_forward_sector_count = 24     # rays 奖励使用的前方扇区数（扇区18=正前方，12扇区=±60°）
+        ray_forward_sector_center = 18
+
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
@@ -167,16 +170,18 @@ class Go2LidarPillarCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 5.0e-1   
-            tracking_ang_vel = 3.0e-1   
+            # tracking_lin_vel = 5.0e-1   
+            tracking_ang_vel = 2.0e-1   
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
             base_height = -2.0
             orientation = -0.0
             move_distance = 10.0  # pillar 地形：鼓励远离出生点
+            
             #override
             # lin_vel_z = -1.0e-3
+            tracking_lin_vel = 0.0
       
 
     class normalization(Go2RoughCfg.normalization):
