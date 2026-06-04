@@ -116,7 +116,15 @@ class Go2LidarPDRiskNet(Go2):
             [0.0, -1.0],   # direction 2: -Y (南)
             [-1.0, 0.0],   # direction 3: -X (西)
         ], device=self.device, dtype=torch.float)
-        self._channel_forward = _FORWARD_LOOKUP_TABLE[self.terrain_types.long()]
+        _safe_idx = self.terrain_types.long().clamp(0, 3)
+        self._channel_forward = _FORWARD_LOOKUP_TABLE[_safe_idx]
+
+        # Per-cell goal offsets table (world frame, relative to env_origin)
+        if hasattr(self.terrain, "goal_offsets") and np.any(self.terrain.goal_offsets):
+            self._goal_offsets_table = torch.from_numpy(
+                self.terrain.goal_offsets).to(self.device).to(torch.float)
+        else:
+            self._goal_offsets_table = None
 
         # Precompute distal ray mask and sector ids from sensor ray directions.
         # This is deferred to _init_lidar_aux() after _init_lidar_sensor().
@@ -387,9 +395,10 @@ class Go2LidarPDRiskNet(Go2):
 
         # 通道终点到达检测
         pd_cfg = self.cfg.pd_risknet
-        if hasattr(self.cfg.terrain, "goal_offset_x") and getattr(pd_cfg, "goal_enabled", False):
-            gx = self.env_origins[:, 0] + self.cfg.terrain.goal_offset_x
-            gy = self.env_origins[:, 1] + self.cfg.terrain.goal_offset_y
+        if self._goal_offsets_table is not None and getattr(pd_cfg, "goal_enabled", False):
+            off = self._goal_offsets_table[self.terrain_levels, self.terrain_types]
+            gx = self.env_origins[:, 0] + off[:, 0]
+            gy = self.env_origins[:, 1] + off[:, 1]
             gr = self.cfg.terrain.goal_radius
             dist = torch.sqrt(
                 (self.base_pos[:, 0] - gx) ** 2 +
@@ -400,10 +409,11 @@ class Go2LidarPDRiskNet(Go2):
 
     def _reward_goal(self):
         pd_cfg = self.cfg.pd_risknet
-        if not hasattr(self.cfg.terrain, "goal_offset_x") or not getattr(pd_cfg, "goal_enabled", False):
+        if self._goal_offsets_table is None or not getattr(pd_cfg, "goal_enabled", False):
             return torch.zeros(self.num_envs, device=self.device)
-        gx = self.env_origins[:, 0] + self.cfg.terrain.goal_offset_x
-        gy = self.env_origins[:, 1] + self.cfg.terrain.goal_offset_y
+        off = self._goal_offsets_table[self.terrain_levels, self.terrain_types]
+        gx = self.env_origins[:, 0] + off[:, 0]
+        gy = self.env_origins[:, 1] + off[:, 1]
         gr = self.cfg.terrain.goal_radius
         dist = torch.sqrt(
             (self.base_pos[:, 0] - gx) ** 2 +
@@ -462,13 +472,11 @@ class Go2LidarPDRiskNet(Go2):
         if not self.init_done:
             return
 
-        if hasattr(self.cfg.terrain, "goal_offset_y"):
+        if self._goal_offsets_table is not None:
             delta_xy = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
             forward_dist = torch.sum(delta_xy * self._channel_forward[env_ids], dim=1)
-            goal_x = torch.full_like(forward_dist, self.cfg.terrain.goal_offset_x)
-            goal_y = torch.full_like(forward_dist, self.cfg.terrain.goal_offset_y)
-            goal_xy = torch.stack([goal_x, goal_y], dim=1)
-            goal_dist = torch.sum(goal_xy * self._channel_forward[env_ids], dim=1) - self.cfg.terrain.goal_radius
+            off = self._goal_offsets_table[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+            goal_dist = torch.sum(off * self._channel_forward[env_ids], dim=1) - self.cfg.terrain.goal_radius
 
             move_up_raw = forward_dist > goal_dist
             move_down_ratio = float(getattr(self.cfg.pd_risknet, "move_down_ratio", 0.5))

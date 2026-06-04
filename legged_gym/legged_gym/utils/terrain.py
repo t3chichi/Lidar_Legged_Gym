@@ -51,6 +51,7 @@ class Terrain:
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
         self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
         self.spawn_angles = np.zeros((cfg.num_rows, cfg.num_cols))
+        self.goal_offsets = np.zeros((cfg.num_rows, cfg.num_cols, 2))
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
@@ -89,7 +90,7 @@ class Terrain:
             if hasattr(self.cfg, "turn_angle_deg_max"):
                 self.cfg._first_turn_left = ((i + j) % 2 == 0)
             terrain = self.make_terrain(choice, difficulty, col_index=j)
-            self.add_terrain_to_map(terrain, i, j)
+            self.add_terrain_to_map(terrain, i, j, direction=j % 4)
         self._draw_goal_rings()
 
     def curiculum(self, difficulty_scale=1.0):
@@ -101,7 +102,7 @@ class Terrain:
                 if hasattr(self.cfg, "turn_angle_deg_max"):
                     self.cfg._first_turn_left = ((i + j) % 2 == 0)
                 terrain = self.make_terrain(choice, difficulty, col_index=j)
-                self.add_terrain_to_map(terrain, i, j)
+                self.add_terrain_to_map(terrain, i, j, direction=j % 4)
         self._draw_goal_rings()
 
     def selected_terrain(self):
@@ -117,7 +118,7 @@ class Terrain:
                                                horizontal_scale=self.horizontal_scale)
 
             eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
-            self.add_terrain_to_map(terrain, i, j)
+            self.add_terrain_to_map(terrain, i, j, direction=None)
         self._draw_goal_rings()
 
     def make_terrain(self, choice, difficulty, col_index=None):
@@ -172,7 +173,7 @@ class Terrain:
 
         return terrain
 
-    def add_terrain_to_map(self, terrain, row, col):
+    def add_terrain_to_map(self, terrain, row, col, direction=None):
         i = row
         j = col
         # map coordinate system
@@ -184,8 +185,24 @@ class Terrain:
 
         if hasattr(self.cfg, "corridor_width"):
             margin = float(getattr(self.cfg, "end_margin", 0.5))
-            env_origin_x = i * self.env_length + self.cfg.terrain_width / 2.0
-            env_origin_y = j * self.env_width + self.cfg.corridor_width / 2.0 + margin
+            dir_idx = int(direction) if direction is not None else 0
+            # tile top-left corner in world coords
+            tile_x0 = row * self.env_length
+            tile_y0 = col * self.env_width
+            half_w = self.cfg.terrain_width / 2.0
+            cw2 = self.cfg.corridor_width / 2.0
+            if dir_idx == 0:  # +Y: entrance at bottom center
+                env_origin_x = tile_x0 + half_w
+                env_origin_y = tile_y0 + cw2 + margin
+            elif dir_idx == 1:  # +X: entrance at left center
+                env_origin_x = tile_x0 + cw2 + margin
+                env_origin_y = tile_y0 + half_w
+            elif dir_idx == 2:  # -Y: entrance at top center
+                env_origin_x = tile_x0 + half_w
+                env_origin_y = tile_y0 + self.env_width - cw2 - margin
+            else:  # dir_idx == 3: -X: entrance at right center
+                env_origin_x = tile_x0 + self.env_length - cw2 - margin
+                env_origin_y = tile_y0 + half_w
             env_origin_z = 0.0
         else:
             env_origin_x = (i + 0.5) * self.env_length
@@ -198,10 +215,13 @@ class Terrain:
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
         if hasattr(terrain, "spawn_angle"):
             self.spawn_angles[i, j] = terrain.spawn_angle
+        if hasattr(terrain, "goal_offset_x"):
+            self.goal_offsets[i, j, 0] = terrain.goal_offset_x
+            self.goal_offsets[i, j, 1] = terrain.goal_offset_y
 
     def _draw_goal_rings(self):
-        """在地形高度图上绘制终点轮廓圈（走廊地形）。"""
-        if not hasattr(self.cfg, "goal_offset_x") or not hasattr(self.cfg, "corridor_width"):
+        """Draw goal rings on terrain height field (corridor terrain)."""
+        if not hasattr(self, "goal_offsets"):
             return
         hs = self.cfg.horizontal_scale
         vs = self.cfg.vertical_scale
@@ -210,8 +230,8 @@ class Terrain:
         N = max(ring_r_px * 6, 24)
         for i in range(self.cfg.num_rows):
             for j in range(self.cfg.num_cols):
-                gx = self.env_origins[i, j, 0] + self.cfg.goal_offset_x
-                gy = self.env_origins[i, j, 1] + self.cfg.goal_offset_y
+                gx = self.env_origins[i, j, 0] + self.goal_offsets[i, j, 0]
+                gy = self.env_origins[i, j, 1] + self.goal_offsets[i, j, 1]
                 gx_px = int(gx / hs) + self.border
                 gy_px = int(gy / hs) + self.border
                 for k in range(N):
@@ -672,8 +692,10 @@ def trapezoid_corridor_terrain(terrain, difficulty, cfg, direction=None):
     if goal_forward_margin > 0:
         raw_goal_y -= goal_forward_margin
 
-    cfg.goal_offset_x = 0.0 - sin_r * raw_goal_y
-    cfg.goal_offset_y = cos_r * raw_goal_y
+    terrain.goal_offset_x = 0.0 - sin_r * raw_goal_y
+    terrain.goal_offset_y = cos_r * raw_goal_y
+    cfg.goal_offset_x = terrain.goal_offset_x  # legacy; prefer per-cell goal_offsets array
+    cfg.goal_offset_y = terrain.goal_offset_y
     cfg.goal_radius = float(getattr(cfg, "goal_radius", corridor_width / 2.0))
 
     # Spawn angle follows direction
