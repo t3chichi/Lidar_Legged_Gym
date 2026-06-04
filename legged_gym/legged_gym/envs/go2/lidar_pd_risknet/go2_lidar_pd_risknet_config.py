@@ -62,7 +62,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
         collision_3d = False             # 正式训练：2D 水平连续平方
 
         # 通道终点奖励
@@ -128,9 +127,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [0.87, 2.27]
-
-            # heading = [1.57, 1.57]  # 固定朝向命令，验证避障奖励是否足够
+            heading = [0.87, 2.27]  # 基础范围; 实际在 _resample_commands 中围绕通道方向重采样
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -182,7 +179,6 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             # lin_vel_z = -1.0e-3
             collision = -5.0e-1
 
-            y_progress = 0.0   # 消融实验：清零，验证 forward-sector rays 方向梯度是否足够
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             

@@ -100,18 +100,6 @@ class Go2LidarPDRiskNet(Go2):
             2,
             device=self.device,
             dtype=torch.float,
-            requires_grad=False
-        )
-        self.last_y = torch.zeros(
-            self.num_envs,
-            device=self.device,
-            dtype=torch.float,
-            requires_grad=False,
-        )
-        self.last_dist = torch.zeros(
-            self.num_envs,
-            device=self.device,
-            dtype=torch.float,
             requires_grad=False,
         )
         self._consecutive_upgrade_count = torch.zeros(
@@ -120,6 +108,15 @@ class Go2LidarPDRiskNet(Go2):
         self._consecutive_downgrade_count = torch.zeros(
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
+
+        # 通道前进方向单位向量 (每环境根据 terrain_type 即 col 索引确定)
+        _FORWARD_LOOKUP_TABLE = torch.tensor([
+            [0.0, 1.0],    # direction 0: +Y (北)
+            [1.0, 0.0],    # direction 1: +X (东)
+            [0.0, -1.0],   # direction 2: -Y (南)
+            [-1.0, 0.0],   # direction 3: -X (西)
+        ], device=self.device, dtype=torch.float)
+        self._channel_forward = _FORWARD_LOOKUP_TABLE[self.terrain_types.long()]
 
         # Precompute distal ray mask and sector ids from sensor ray directions.
         # This is deferred to _init_lidar_aux() after _init_lidar_sensor().
@@ -350,6 +347,27 @@ class Go2LidarPDRiskNet(Go2):
     def _compute_pd_risknet_features(self):
         self._compute_v_avoid()
 
+    def _resample_commands(self, env_ids):
+        import math
+        self.commands[env_ids, 0] = torch_rand_float(
+            self.command_ranges["lin_vel_x"][0], self.command_ranges["lin_vel_x"][1],
+            (len(env_ids), 1), device=self.device).squeeze(1)
+        self.commands[env_ids, 1] = torch_rand_float(
+            self.command_ranges["lin_vel_y"][0], self.command_ranges["lin_vel_y"][1],
+            (len(env_ids), 1), device=self.device).squeeze(1)
+
+        # heading 围绕通道方向采样 (向量化)
+        _SPAWN_ANGLES = torch.tensor(
+            [math.pi / 2, 0.0, -math.pi / 2, math.pi],
+            device=self.device, dtype=torch.float)
+        channel_angle = _SPAWN_ANGLES[self.terrain_types[env_ids].long()]
+        spread = 0.35  # +/-20 degrees
+        self.commands[env_ids, 3] = channel_angle + torch_rand_float(
+            -spread, spread, (len(env_ids), 1), device=self.device).squeeze(1)
+
+        # set small commands to zero
+        self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+
     def _post_physics_step_callback(self):
         super()._post_physics_step_callback()
         self._update_lidar_history()
@@ -445,8 +463,12 @@ class Go2LidarPDRiskNet(Go2):
             return
 
         if hasattr(self.cfg.terrain, "goal_offset_y"):
-            forward_dist = self.root_states[env_ids, 1] - self.env_origins[env_ids, 1]
-            goal_dist = self.cfg.terrain.goal_offset_y - self.cfg.terrain.goal_radius
+            delta_xy = self.root_states[env_ids, :2] - self.env_origins[env_ids, :2]
+            forward_dist = torch.sum(delta_xy * self._channel_forward[env_ids], dim=1)
+            goal_x = torch.full_like(forward_dist, self.cfg.terrain.goal_offset_x)
+            goal_y = torch.full_like(forward_dist, self.cfg.terrain.goal_offset_y)
+            goal_xy = torch.stack([goal_x, goal_y], dim=1)
+            goal_dist = torch.sum(goal_xy * self._channel_forward[env_ids], dim=1) - self.cfg.terrain.goal_radius
 
             move_up_raw = forward_dist > goal_dist
             move_down_ratio = float(getattr(self.cfg.pd_risknet, "move_down_ratio", 0.5))
@@ -519,7 +541,6 @@ class Go2LidarPDRiskNet(Go2):
         self.lidar_points_base[env_ids] = 0.0
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
-        self.last_y[env_ids] = self.base_pos[env_ids, 1]
         self.last_dist[env_ids] = torch.norm(
             self.base_pos[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
         if hasattr(self, 'last_last_actions'):
@@ -565,14 +586,6 @@ class Go2LidarPDRiskNet(Go2):
         start = max(0, center - n_fwd // 2)
         end = min(36, start + n_fwd)
         return sector_mean[:, start:end].mean(dim=1) / d_max
-
-    def _reward_y_progress(self):
-        step_delta = self.base_pos[:, 1] - self.last_y
-        self.last_y[:] = self.base_pos[:, 1]
-        forward  = torch.clamp(step_delta, min=0.0)
-        backward = torch.clamp(-step_delta, min=0.0)
-        ratio = float(getattr(self.cfg.pd_risknet, "y_backward_penalty_ratio", 0.1))
-        return forward - ratio * backward
 
     def _reward_move_distance(self):
         dist = torch.norm(self.base_pos[:, :2] - self.env_origins[:, :2], dim=1)
