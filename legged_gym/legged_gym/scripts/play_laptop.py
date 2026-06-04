@@ -17,7 +17,7 @@ def play(args):
     # Laptop overrides: 显存从 ~20GB 压缩到 ~1.5GB
     # 不改单块地形几何 — 只减副本数、边界、env 数、PhysX buffer
     # ----------------------------------------------------------------
-    env_cfg.terrain.num_cols = 1
+    env_cfg.terrain.num_cols = 2
     env_cfg.terrain.border_size = 5
     env_cfg.terrain.max_init_terrain_level = 4  # rows 0~4 全部可用
 
