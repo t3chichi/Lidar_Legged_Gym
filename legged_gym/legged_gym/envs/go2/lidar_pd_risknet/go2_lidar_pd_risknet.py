@@ -375,7 +375,7 @@ class Go2LidarPDRiskNet(Go2):
             [math.pi / 2, 0.0, -math.pi / 2, math.pi],
             device=self.device, dtype=torch.float)
         channel_angle = _SPAWN_ANGLES[self.terrain_types[env_ids].long()]
-        spread = 0.35  # +/-20 degrees
+        spread = float(getattr(self.cfg.pd_risknet, "heading_spread", 0.35))
         self.commands[env_ids, 3] = channel_angle + torch_rand_float(
             -spread, spread, (len(env_ids), 1), device=self.device).squeeze(1)
 

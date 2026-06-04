@@ -64,6 +64,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         collision_3d = False             # 正式训练：2D 水平连续平方
 
+        # heading 随机范围: 围绕通道方向 ± spread (rad)
+        heading_spread = 0.35  # ±20°
+
         # 通道终点奖励
         goal_enabled = True
         goal_reward = 10.0
