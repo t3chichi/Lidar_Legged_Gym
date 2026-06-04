@@ -500,3 +500,47 @@ def test_trapezoid_corridor_level0_straight():
     total_pixels = y_end - y_start
     assert floor_pixels > 0.9 * total_pixels, \
         f"Expected mostly floor at midline, got {floor_pixels}/{total_pixels}"
+
+
+def test_trapezoid_corridor_four_direction_rot90():
+    """Direction k corridor height field should match np.rot90(direction 0, k=k)."""
+    import numpy as np
+    from legged_gym.utils.terrain import trapezoid_corridor_terrain
+    from isaacgym import terrain_utils
+
+    hs = 0.1
+    vs = 1.0
+    size = 150
+
+    class Cfg:
+        corridor_width = 3.0
+        wall_height = 1.5
+        wall_thickness = 2.0
+        turn_angle_deg_max = 45.0
+        diagonal_length = 3.0
+        terrain_length = 15.0
+        terrain_width = 15.0
+        end_margin = 0.5
+        goal_forward_margin = 0.0
+        goal_radius = 1.6
+        curriculum = False
+        _first_turn_left = True
+
+    # Generate direction 0 baseline (+Y)
+    cfg0 = Cfg()
+    terrain0 = terrain_utils.SubTerrain("dir0", width=size, length=size,
+                         vertical_scale=vs, horizontal_scale=hs)
+    trapezoid_corridor_terrain(terrain0, difficulty=0.5, cfg=cfg0, direction=0)
+    hf0 = terrain0.height_field_raw
+
+    for k in [1, 2, 3]:
+        cfgn = Cfg()
+        terraink = terrain_utils.SubTerrain(f"dir{k}", width=size, length=size,
+                             vertical_scale=vs, horizontal_scale=hs)
+        trapezoid_corridor_terrain(terraink, difficulty=0.5, cfg=cfgn, direction=k)
+        hfk = terraink.height_field_raw
+
+        expected = np.rot90(hf0, k=-k, axes=(0, 1))
+        match = (hfk == expected).mean()
+        assert match > 0.90, \
+            f"Direction {k}: only {match*100:.1f}% pixels match rot90, expected >90%"

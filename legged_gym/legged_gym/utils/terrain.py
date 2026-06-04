@@ -88,7 +88,7 @@ class Terrain:
             difficulty = np.random.choice([0.5, 0.75, 0.9]) * difficulty_scale
             if hasattr(self.cfg, "turn_angle_deg_max"):
                 self.cfg._first_turn_left = ((i + j) % 2 == 0)
-            terrain = self.make_terrain(choice, difficulty)
+            terrain = self.make_terrain(choice, difficulty, col_index=j)
             self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
 
@@ -100,7 +100,7 @@ class Terrain:
 
                 if hasattr(self.cfg, "turn_angle_deg_max"):
                     self.cfg._first_turn_left = ((i + j) % 2 == 0)
-                terrain = self.make_terrain(choice, difficulty)
+                terrain = self.make_terrain(choice, difficulty, col_index=j)
                 self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
 
@@ -120,7 +120,7 @@ class Terrain:
             self.add_terrain_to_map(terrain, i, j)
         self._draw_goal_rings()
 
-    def make_terrain(self, choice, difficulty):
+    def make_terrain(self, choice, difficulty, col_index=None):
         terrain = terrain_utils.SubTerrain("terrain",
                                            width=self.width_per_env_pixels,
                                            length=self.width_per_env_pixels,
@@ -161,7 +161,7 @@ class Terrain:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
 
         elif choice < self.proportions[7]:
-            direction = j % 4
+            direction = col_index % 4 if col_index is not None else 0
             trapezoid_corridor_terrain(terrain, difficulty, self.cfg, direction=direction)
 
         elif choice < self.proportions[8]:
