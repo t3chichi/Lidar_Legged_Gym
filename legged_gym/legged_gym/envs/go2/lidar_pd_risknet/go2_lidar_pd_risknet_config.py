@@ -180,7 +180,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #override
             # lin_vel_z = -1.0e-3
-            collision = -5.0e-1
+            collision = -1.0e-1
 
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
