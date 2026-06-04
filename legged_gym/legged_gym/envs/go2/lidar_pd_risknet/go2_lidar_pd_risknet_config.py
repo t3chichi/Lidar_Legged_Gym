@@ -130,7 +130,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [0.87, 2.27]  # 基础范围; 实际在 _resample_commands 中围绕通道方向重采样
+            # heading = [0.87, 2.27]  #死代码, 各通道范围由heading_spread决定
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
