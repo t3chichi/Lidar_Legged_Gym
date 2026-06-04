@@ -161,7 +161,8 @@ class Terrain:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
 
         elif choice < self.proportions[7]:
-            trapezoid_corridor_terrain(terrain, difficulty, self.cfg)
+            direction = j % 4
+            trapezoid_corridor_terrain(terrain, difficulty, self.cfg, direction=direction)
 
         elif choice < self.proportions[8]:
             pillar_field_terrain(terrain, difficulty, self.cfg)
@@ -498,7 +499,7 @@ def curved_corridor_terrain(terrain, difficulty, cfg):
     return terrain
 
 
-def trapezoid_corridor_terrain(terrain, difficulty, cfg):
+def trapezoid_corridor_terrain(terrain, difficulty, cfg, direction=None):
     """Generate trapezoid-wave corridor terrain with two alternating bends.
 
     Corridor centerline (5 segments, all point-to-point straight):
@@ -535,6 +536,12 @@ def trapezoid_corridor_terrain(terrain, difficulty, cfg):
     corridor_width_px = int(corridor_width / hs)
     wall_height_px = int(wall_height / vs)
     half_cw = corridor_width_px // 2
+    # === direction: rotate entire corridor to target orientation ===
+    dir_idx = int(direction) if direction is not None else 0
+    rot_angle = -dir_idx * np.pi / 2.0  # 90-degree multiples, grid-aligned
+    cos_r = np.cos(rot_angle)
+    sin_r = np.sin(rot_angle)
+
     end_margin_px = int(end_margin / hs)
     diagonal_px = int(diagonal_length / hs)
 
@@ -637,16 +644,41 @@ def trapezoid_corridor_terrain(terrain, difficulty, cfg):
     terrain.height_field_raw[:, :] = wall_height_px
     terrain.height_field_raw[in_corridor] = 0
 
-    # Goal info (relative to env_origin, which is at corridor entrance center)
-    cfg.goal_offset_x = 0.0  # always centered for trapezoid
-    cfg.goal_offset_y = float(terrain_len) - corridor_width - 2.0 * end_margin
+    # === Apply directional rotation to height field ===
+    if dir_idx != 0:
+        cx = (size_x - 1) / 2.0
+        cy = (size_y - 1) / 2.0
+        src_field = terrain.height_field_raw.copy()
+
+        x_dst, y_dst = np.meshgrid(
+            np.arange(size_x, dtype=np.float64),
+            np.arange(size_y, dtype=np.float64),
+            indexing='ij',
+        )
+
+        # Inverse transform: destination coords -> source coords (rotate by -angle)
+        x_rel = x_dst - cx
+        y_rel = y_dst - cy
+        x_src = cx + x_rel * cos_r + y_rel * sin_r
+        y_src = cy - x_rel * sin_r + y_rel * cos_r
+
+        x_src_idx = np.clip(np.round(x_src).astype(int), 0, size_x - 1)
+        y_src_idx = np.clip(np.round(y_src).astype(int), 0, size_y - 1)
+        terrain.height_field_raw = src_field[x_src_idx, y_src_idx]
+
+    # Goal info — rotate original +Y endpoint by dir_idx * pi/2
+    raw_goal_y = float(terrain_len) - corridor_width - 2.0 * end_margin
     goal_forward_margin = float(getattr(cfg, "goal_forward_margin", 0.0))
     if goal_forward_margin > 0:
-        cfg.goal_offset_y -= goal_forward_margin
+        raw_goal_y -= goal_forward_margin
+
+    cfg.goal_offset_x = 0.0 - sin_r * raw_goal_y
+    cfg.goal_offset_y = cos_r * raw_goal_y
     cfg.goal_radius = float(getattr(cfg, "goal_radius", corridor_width / 2.0))
 
-    # Spawn always facing +Y (pi/2 from +X axis)
-    terrain.spawn_angle = np.pi / 2.0
+    # Spawn angle follows direction
+    _SPAWN_ANGLES = [np.pi / 2, 0.0, -np.pi / 2, np.pi]
+    terrain.spawn_angle = _SPAWN_ANGLES[dir_idx]
 
     return terrain
 

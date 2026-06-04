@@ -352,47 +352,66 @@ def test_v_avoid_guided_formula():
 
 
 def test_trapezoid_corridor_geometry():
-    """Verify trapezoid corridor centerline returns to midline and faces +Y."""
+    """Verify trapezoid corridor spawn_angle and goal_offset for all 4 directions."""
     import numpy as np
     import math
     from legged_gym.utils.terrain import trapezoid_corridor_terrain
     from isaacgym import terrain_utils
 
-    hs = 0.1  # horizontal_scale
-    vs = 1.0  # vertical_scale
-    size = 150  # pixels for 15m terrain
+    hs = 0.1
+    vs = 1.0
+    size = 150
 
-    terrain = terrain_utils.SubTerrain("test", width=size, length=size,
-                         vertical_scale=vs, horizontal_scale=hs)
+    expected = [
+        # dir, spawn_angle, goal_ox_sign (0=zero, +/-1=sign), goal_oy_sign
+        (0,  math.pi / 2,  0, +1),
+        (1,  0.0,          +1,  0),
+        (2, -math.pi / 2,   0, -1),
+        (3,  math.pi,      -1,  0),
+    ]
 
-    class Cfg:
-        corridor_width = 3.0
-        wall_height = 1.5
-        wall_thickness = 2.0
-        turn_angle_deg_max = 55.0
-        diagonal_length = 3.0
-        terrain_length = 15.0
-        terrain_width = 15.0
-        end_margin = 0.5
-        goal_forward_margin = 0.6
-        goal_radius = 1.6
-        curriculum = False
-        _first_turn_left = True
+    for direction, exp_spawn, goal_ox_sign, goal_oy_sign in expected:
+        class Cfg:
+            corridor_width = 3.0
+            wall_height = 1.5
+            wall_thickness = 2.0
+            turn_angle_deg_max = 55.0
+            diagonal_length = 3.0
+            terrain_length = 15.0
+            terrain_width = 15.0
+            end_margin = 0.5
+            goal_forward_margin = 0.6
+            goal_radius = 1.6
+            curriculum = False
+            _first_turn_left = True
 
-    cfg = Cfg()
-    trapezoid_corridor_terrain(terrain, difficulty=0.5, cfg=cfg)
+        cfg = Cfg()
+        terrain = terrain_utils.SubTerrain(f"test_dir{direction}", width=size, length=size,
+                             vertical_scale=vs, horizontal_scale=hs)
+        trapezoid_corridor_terrain(terrain, difficulty=0.5, cfg=cfg, direction=direction)
 
-    # spawn_angle must be pi/2 (facing +Y)
-    assert abs(terrain.spawn_angle - math.pi / 2) < 1e-6, \
-        f"Expected spawn_angle=pi/2, got {terrain.spawn_angle}"
+        assert abs(terrain.spawn_angle - exp_spawn) < 1e-6, \
+            f"dir={direction}: expected spawn_angle={exp_spawn}, got {terrain.spawn_angle}"
 
-    # goal_offset_x must be 0 (centered)
-    assert cfg.goal_offset_x == 0.0, \
-        f"Expected goal_offset_x=0, got {cfg.goal_offset_x}"
+        if goal_ox_sign == 0:
+            assert abs(cfg.goal_offset_x) < 1e-6, \
+                f"dir={direction}: expected goal_offset_x=0, got {cfg.goal_offset_x}"
+        elif goal_ox_sign > 0:
+            assert cfg.goal_offset_x > 1.0, \
+                f"dir={direction}: expected goal_offset_x > 0, got {cfg.goal_offset_x}"
+        else:
+            assert cfg.goal_offset_x < -1.0, \
+                f"dir={direction}: expected goal_offset_x < 0, got {cfg.goal_offset_x}"
 
-    # goal_offset_y must be positive
-    assert cfg.goal_offset_y > 0, \
-        f"Expected goal_offset_y > 0, got {cfg.goal_offset_y}"
+        if goal_oy_sign == 0:
+            assert abs(cfg.goal_offset_y) < 1e-6, \
+                f"dir={direction}: expected goal_offset_y=0, got {cfg.goal_offset_y}"
+        elif goal_oy_sign > 0:
+            assert cfg.goal_offset_y > 1.0, \
+                f"dir={direction}: expected goal_offset_y > 0, got {cfg.goal_offset_y}"
+        else:
+            assert cfg.goal_offset_y < -1.0, \
+                f"dir={direction}: expected goal_offset_y < 0, got {cfg.goal_offset_y}"
 
 
 def test_trapezoid_corridor_lr_rl_mirror():
