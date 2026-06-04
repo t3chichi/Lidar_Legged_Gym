@@ -70,9 +70,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         goal_reward = 10.0
 
         # 地形课程升降级
-        move_down_ratio = 0.4                 # 降级阈值：forward_dist / goal_dist < 此比例
-        consecutive_upgrade_episodes = 3      # 连续 N 回合到达终点才触发升级
-        consecutive_downgrade_episodes = 3    # 连续 N 回合未达降级阈值才触发降级
+        move_down_ratio = 0.5                 # 降级阈值：forward_dist / goal_dist < 此比例
+        consecutive_upgrade_episodes = 5      # 连续 N 回合到达终点才触发升级
+        consecutive_downgrade_episodes = 2    # 连续 N 回合未达降级阈值才触发降级
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
@@ -130,6 +130,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
             heading = [0.87, 2.27]
 
+            # heading = [1.57, 1.57]  # 固定朝向命令，验证避障奖励是否足够
+
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
         # Current base pipeline assumes one actor per env and needs a larger refactor
@@ -168,8 +170,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            # tracking_lin_vel = 5.0e-1   
-            tracking_ang_vel = 2.0e-1   
+            tracking_lin_vel = 1.0   
+            tracking_ang_vel = 5.0e-1   
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
@@ -178,8 +180,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #override
             # lin_vel_z = -1.0e-3
-            tracking_lin_vel = 0.0
-            collision = -2.0e-2
+            collision = -5.0e-1
 
             y_progress = 0.0   # 消融实验：清零，验证 forward-sector rays 方向梯度是否足够
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
