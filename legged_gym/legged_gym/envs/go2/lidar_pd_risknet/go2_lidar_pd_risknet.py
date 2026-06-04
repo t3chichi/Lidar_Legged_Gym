@@ -102,6 +102,12 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self.last_dist = torch.zeros(
+            self.num_envs,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
         self._consecutive_upgrade_count = torch.zeros(
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
