@@ -221,7 +221,7 @@ class Terrain:
 
     def _draw_goal_rings(self):
         """Draw goal rings on terrain height field (corridor terrain)."""
-        if not hasattr(self, "goal_offsets"):
+        if not hasattr(self.cfg, "corridor_width"):
             return
         hs = self.cfg.horizontal_scale
         vs = self.cfg.vertical_scale
