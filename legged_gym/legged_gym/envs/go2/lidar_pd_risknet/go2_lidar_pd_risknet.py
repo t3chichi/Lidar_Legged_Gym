@@ -428,9 +428,20 @@ class Go2LidarPDRiskNet(Go2):
         reached = dist < gr
         return reached.float() * pd_cfg.goal_reward
 
-    def _reward_ang_vel_yaw_penalty(self):                                        
+    def _reward_ang_vel_yaw_penalty(self):
       return torch.square(self.base_ang_vel[:, 2])
-    
+
+    def _reward_curvature(self):
+        """惩罚瞬时路径曲率平方，抑制原地转圈行为。
+
+        r = -lambda * omega_z^2 / (v_xy^2 + sigma^2)
+        轨迹曲率 kappa = |omega_z| / v_xy，该项 = -lambda * kappa^2。
+        sigma^2 软化项防止零线速度时惩罚爆炸。
+        """
+        v_xy = torch.norm(self.base_lin_vel[:, :2], dim=1)
+        omega_z = self.base_ang_vel[:, 2]
+        return omega_z.square() / (v_xy.square() + 0.49)
+
     def _reset_root_states(self, env_ids):
         if self.custom_origins:
             self.root_states[env_ids] = self.base_init_state
