@@ -54,7 +54,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_beta = 1.0
         avoid_speed_limit = 1.5  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
-        ray_forward_sector_count = 20     # rays 奖励使用的前方扇区数（扇区18=正前方，12扇区=±60°）
+        ray_forward_sector_count = 24     # rays 奖励使用的前方扇区数（扇区18=正前方，24扇区=±120°）
         ray_forward_sector_center = 18    # 前方扇区中轴索引（传感器+X→机器人+X）
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -171,8 +171,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 0.5   
-            tracking_ang_vel = 0.2  
+            tracking_lin_vel = 1.0   
+            tracking_ang_vel = 0.5  
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
@@ -185,7 +185,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
-            curvature = -0.05  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
+            curvature = -0.00  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
 
 
     class normalization(Go2RoughCfg.normalization):
