@@ -146,14 +146,27 @@ class Go2LidarPDRiskNet(Go2):
         # This is deferred to _init_lidar_aux() after _init_lidar_sensor().
 
     def _init_lidar_aux(self):
-        """Post-init: compute auxiliary structures from LidarSensor ray directions."""
+        """Post-init: compute auxiliary structures from LidarSensor ray directions.
+
+        Ray directions are rotated from sensor frame to body frame so that
+        sector assignments and _sector_dirs share the same coordinate frame.
+        """
         cfg = self.cfg.pd_risknet
         split_rad = math.radians(float(cfg.split_theta_deg))
 
         self._ray_dirs_sensor = self.lidar_sensor.get_ray_directions()
+
+        # Rotate ray directions from sensor frame to body frame.
+        # The sensor has a yaw offset of ~pi rad, which flips the Y axis relative
+        # to the body. Using raw sensor-frame azimuth with body-frame _sector_dirs
+        # produces a left-right mirror that pulls the target direction toward walls.
+        n_rays = self._ray_dirs_sensor.shape[0]
+        offset_q = self._sensor_offset_quat[0:1].expand(n_rays, 4)
+        ray_dirs_body = quat_apply(offset_q, self._ray_dirs_sensor)
+
         theta = torch.atan2(
-            self._ray_dirs_sensor[:, 2],
-            torch.linalg.norm(self._ray_dirs_sensor[:, :2], dim=1) + 1e-8,
+            ray_dirs_body[:, 2],
+            torch.linalg.norm(ray_dirs_body[:, :2], dim=1) + 1e-8,
         )
         self._distal_mask = theta < split_rad
         if self._distal_mask.sum() == 0:
@@ -162,8 +175,8 @@ class Go2LidarPDRiskNet(Go2):
             )
 
         ray_azimuth = torch.atan2(
-            self._ray_dirs_sensor[:, 1],
-            self._ray_dirs_sensor[:, 0],
+            ray_dirs_body[:, 1],
+            ray_dirs_body[:, 0],
         )
         ray_azimuth_0_2pi = ray_azimuth + math.pi
         sector_size = 2.0 * math.pi / 36.0
