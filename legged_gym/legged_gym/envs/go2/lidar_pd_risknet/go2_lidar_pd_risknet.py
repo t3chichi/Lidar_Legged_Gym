@@ -930,10 +930,11 @@ class Go2LidarPDRiskNet(Go2):
                                 width=0.01, color=(0, 0, 1))  # 蓝色
 
         # 绘制开阔方向 (绿色) — EMA 平滑后的 target_dir (世界帧单位向量)。
-        smooth_dir = self._smooth_dir_world[env_id].detach()
-        smooth_norm = torch.norm(smooth_dir).item()
+        smooth_dir_2d = self._smooth_dir_world[env_id].detach()
+        smooth_norm = torch.norm(smooth_dir_2d).item()
         if smooth_norm > 1.0e-6:
+            smooth_dir_3d = np.array([smooth_dir_2d[0].item(), smooth_dir_2d[1].item(), 0.0])
             display_len = 2.0
             self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + display_len * smooth_dir.cpu().numpy()).tolist(),
+                                (start + display_len * smooth_dir_3d).tolist(),
                                 width=0.01, color=(0, 1, 0))
