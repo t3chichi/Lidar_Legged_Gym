@@ -11,11 +11,13 @@ def vel_avoid_reward(v_t, v_cmd, v_avoid, beta_va):
     return torch.exp(-beta_va * err)
 
 
-def rays_reward(distances, d_max):
+def rays_direction_reward(v_body, smooth_dir_body, eps=0.01):
+    """Direction-consistency reward: r = dot(v_body, smooth_dir) / max(|v_body|, eps)."""
     import torch
 
-    clipped = torch.clamp(distances, max=d_max)
-    return torch.mean(clipped / d_max, dim=-1)
+    v_norm = torch.norm(v_body, dim=-1)
+    dot = (v_body * smooth_dir_body).sum(dim=-1)
+    return dot / torch.clamp(v_norm, min=eps)
 
 
 def test_vel_avoid_formula_matches_paper():
@@ -33,14 +35,131 @@ def test_vel_avoid_formula_matches_paper():
     assert torch.isclose(rew[1], torch.tensor(expected), atol=1e-6)
 
 
-def test_rays_formula_matches_paper():
+def test_rays_direction_perfect_alignment():
+    """Moving exactly toward open space -> reward near +1."""
     import torch
 
-    distances = torch.tensor([[1.0, 2.0, 12.0]], dtype=torch.float32)
-    d_max = 10.0
-    rew = rays_reward(distances, d_max)
-    expected = (1.0 / 10.0 + 2.0 / 10.0 + 10.0 / 10.0) / 3.0
-    assert torch.isclose(rew[0], torch.tensor(expected), atol=1e-6)
+    v = torch.tensor([[1.0, 0.0], [0.5, 0.0], [2.0, 0.0]], dtype=torch.float32)
+    d = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]], dtype=torch.float32)
+    r = rays_direction_reward(v, d)
+    assert torch.allclose(r, torch.tensor([1.0, 1.0, 1.0]), atol=1e-6)
+
+
+def test_rays_direction_opposite():
+    """Moving away from open space -> reward near -1."""
+    import torch
+
+    v = torch.tensor([[1.0, 0.0], [0.5, 0.0]], dtype=torch.float32)
+    d = torch.tensor([[-1.0, 0.0], [-1.0, 0.0]], dtype=torch.float32)
+    r = rays_direction_reward(v, d)
+    assert torch.allclose(r, torch.tensor([-1.0, -1.0]), atol=1e-6)
+
+
+def test_rays_direction_orthogonal():
+    """Moving perpendicular to open space -> reward near 0."""
+    import torch
+
+    v = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+    d = torch.tensor([[0.0, 1.0]], dtype=torch.float32)
+    r = rays_direction_reward(v, d)
+    assert torch.allclose(r, torch.tensor([0.0]), atol=1e-6)
+
+
+def test_rays_direction_speed_invariant():
+    """Same direction, different speeds -> same reward (speed-decoupled)."""
+    import torch
+
+    v = torch.tensor([[0.1, 0.0], [1.0, 0.0], [10.0, 0.0]], dtype=torch.float32)
+    d = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]], dtype=torch.float32)
+    r = rays_direction_reward(v, d)
+    assert torch.allclose(r, torch.tensor([1.0, 1.0, 1.0]), atol=1e-6)
+
+
+def test_rays_direction_zero_velocity():
+    """Zero velocity -> reward near 0 (eps prevents division by zero)."""
+    import torch
+
+    v = torch.tensor([[0.0, 0.0]], dtype=torch.float32)
+    d = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+    r = rays_direction_reward(v, d, eps=0.01)
+    assert torch.allclose(r, torch.tensor([0.0]), atol=1e-6)
+
+
+def test_rays_direction_partial_alignment():
+    """45 deg between velocity and direction -> reward = cos(45) ~ 0.707."""
+    import torch
+
+    v = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+    d = torch.tensor([[math.cos(math.radians(45)), math.sin(math.radians(45))]],
+                     dtype=torch.float32)
+    r = rays_direction_reward(v, d)
+    expected = math.cos(math.radians(45))
+    assert torch.allclose(r, torch.tensor([expected]), atol=1e-6)
+
+
+def test_rays_target_dir_square_weights():
+    """Square weighting: front (8m) vs right (2m) -> direction leans strongly forward.
+
+    w_front = 64, w_right = 4.
+    """
+    import torch
+
+    d_front = torch.tensor([8.0])
+    d_right = torch.tensor([2.0])
+    w_front = d_front.square()
+    w_right = d_right.square()
+
+    dir_front = torch.tensor([1.0, 0.0])
+    dir_right = torch.tensor([0.0, 1.0])
+
+    weighted_sum = w_front * dir_front + w_right * dir_right
+    target_dir = weighted_sum / torch.norm(weighted_sum)
+
+    expected_angle = math.atan2(4, 64)
+    actual_angle = math.atan2(target_dir[1].item(), target_dir[0].item())
+    assert abs(actual_angle - expected_angle) < 1e-4
+    assert target_dir[0].item() > 0.99
+
+
+def test_rays_target_dir_bend_scenario():
+    """Bend: front at 3m, left-forward (30 deg) at 6m -> direction shifts leftward.
+
+    Square weights: w_front=9, w_diag=36 -> 4:1 advantage for diagonal.
+    """
+    import torch
+
+    d_front = torch.tensor([3.0])
+    d_diag = torch.tensor([6.0])
+    w_front = d_front.square()
+    w_diag = d_diag.square()
+
+    angle_30 = math.radians(30)
+    dir_front = torch.tensor([1.0, 0.0])
+    dir_diag = torch.tensor([math.cos(angle_30), math.sin(angle_30)])
+
+    weighted_sum = w_front * dir_front + w_diag * dir_diag
+    target_dir = weighted_sum / torch.norm(weighted_sum)
+
+    actual_angle = math.atan2(target_dir[1].item(), target_dir[0].item())
+    assert actual_angle > math.radians(10), \
+        f"bend should shift direction >10 deg, got {math.degrees(actual_angle):.2f}"
+
+
+def test_rays_ema_smoothing():
+    """EMA: smooth = normalize(alpha * target + (1-alpha) * prev)."""
+    import torch
+
+    alpha = 0.4
+    prev = torch.tensor([1.0, 0.0])
+    target = torch.tensor([0.0, 1.0])
+
+    raw = alpha * target + (1 - alpha) * prev
+    smooth = raw / torch.norm(raw)
+
+    expected_angle = math.atan2(0.4, 0.6)
+    actual_angle = math.atan2(smooth[1].item(), smooth[0].item())
+    assert abs(actual_angle - expected_angle) < 1e-4, \
+        f"expected {math.degrees(expected_angle):.2f} deg, got {math.degrees(actual_angle):.2f}"
 
 
 def test_pd_risknet_policy_shape_gate():
@@ -233,31 +352,6 @@ def test_distal_mask_shape_and_count():
     # Verify specific lines: line 0 (57°) is NOT distal, line 17 (-2°) IS distal
     assert not mask[0].item()          # line 0, azimuth 0: elevation 57° -> proximal
     assert mask[-1].item()             # line 17, azimuth 23: elevation -2° -> distal
-
-
-def test_distal_rays_reward_matches_paper():
-    """Paper formula with deterministic distances and hand-computed expected value."""
-    import torch
-
-    # Use a tiny grid (2 elevation x 3 azimuth = 6 points) for hand verification.
-    # FOV: 0° to 30°, split at 15° -> line 0 (30°): proximal, line 1 (0°): distal.
-    num_azimuth = 3
-    num_elevation = 2
-    mask = build_distal_mask(num_azimuth, num_elevation,
-                              0.0, 30.0, 15.0)
-    # mask = [False, False, False, True, True, True] -> 3 distal points
-
-    # One env, 6 points. Distal points (indices 3,4,5) at distances 2, 8, 15.
-    all_distances = torch.tensor([[5.0, 1.0, 9.0,  2.0, 8.0, 15.0]], dtype=torch.float32)
-    distal_dist = all_distances[:, mask]  # [[2.0, 8.0, 15.0]]
-
-    d_max = 10.0
-    # expected: mean(min(2,10)/10, min(8,10)/10, min(15,10)/10)
-    #         = mean(0.2, 0.8, 1.0) = 2.0 / 3.0
-    expected = torch.tensor([(0.2 + 0.8 + 1.0) / 3.0], dtype=torch.float32)
-
-    reward = torch.mean(torch.clamp(distal_dist, max=d_max) / d_max, dim=1)
-    assert torch.allclose(reward, expected, atol=1e-6)
 
 
 def test_distal_mask_empty_raises():
