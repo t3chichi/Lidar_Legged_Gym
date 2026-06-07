@@ -97,17 +97,20 @@ def test_rays_direction_partial_alignment():
     assert torch.allclose(r, torch.tensor([expected]), atol=1e-6)
 
 
-def test_rays_target_dir_square_weights():
-    """Square weighting: front (8m) vs right (2m) -> direction leans strongly forward.
+def test_rays_target_dir_power_weights():
+    """Normalized power weighting: front (8m) vs right (2m) with p=6, d_max=10.
 
-    w_front = 64, w_right = 4.
+    w_front = (8/10)^6 = 0.262, w_right = (2/10)^6 = 6.4e-5. Ratio 4096:1.
+    Direction is essentially pure forward (< 0.02 deg).
     """
     import torch
 
+    d_max = 10.0
+    p = 6
     d_front = torch.tensor([8.0])
     d_right = torch.tensor([2.0])
-    w_front = d_front.square()
-    w_right = d_right.square()
+    w_front = (d_front / d_max).pow(p)
+    w_right = (d_right / d_max).pow(p)
 
     dir_front = torch.tensor([1.0, 0.0])
     dir_right = torch.tensor([0.0, 1.0])
@@ -115,23 +118,26 @@ def test_rays_target_dir_square_weights():
     weighted_sum = w_front * dir_front + w_right * dir_right
     target_dir = weighted_sum / torch.norm(weighted_sum)
 
-    expected_angle = math.atan2(4, 64)
     actual_angle = math.atan2(target_dir[1].item(), target_dir[0].item())
-    assert abs(actual_angle - expected_angle) < 1e-4
-    assert target_dir[0].item() > 0.99
+    assert actual_angle < math.radians(0.02)
+    assert target_dir[0].item() > 0.9999
 
 
 def test_rays_target_dir_bend_scenario():
-    """Bend: front at 3m, left-forward (30 deg) at 6m -> direction shifts leftward.
+    """Bend: front at 3m, left-forward (30 deg) at 6m -> direction shifts strongly leftward.
 
-    Square weights: w_front=9, w_diag=36 -> 4:1 advantage for diagonal.
+    Normalized power weights p=6, d_max=10:
+    w_front = 0.3^6 = 7.29e-4, w_diag = 0.6^6 = 4.67e-2. Ratio 64:1 for diagonal.
+    Expected angle ~29.6 deg.
     """
     import torch
 
+    d_max = 10.0
+    p = 6
     d_front = torch.tensor([3.0])
     d_diag = torch.tensor([6.0])
-    w_front = d_front.square()
-    w_diag = d_diag.square()
+    w_front = (d_front / d_max).pow(p)
+    w_diag = (d_diag / d_max).pow(p)
 
     angle_30 = math.radians(30)
     dir_front = torch.tensor([1.0, 0.0])
@@ -141,8 +147,9 @@ def test_rays_target_dir_bend_scenario():
     target_dir = weighted_sum / torch.norm(weighted_sum)
 
     actual_angle = math.atan2(target_dir[1].item(), target_dir[0].item())
-    assert actual_angle > math.radians(10), \
-        f"bend should shift direction >10 deg, got {math.degrees(actual_angle):.2f}"
+    # With p=6 the diagonal strongly dominates, angle ~29.6 deg.
+    assert actual_angle > math.radians(25), \
+        f"bend should shift direction >25 deg, got {math.degrees(actual_angle):.2f}"
 
 
 def test_rays_ema_smoothing():

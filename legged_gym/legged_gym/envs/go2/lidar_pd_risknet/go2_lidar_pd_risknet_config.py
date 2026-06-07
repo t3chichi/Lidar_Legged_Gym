@@ -15,12 +15,12 @@ PD_DISTAL_FEATURE_DIM = 64
 HEADING_OBS_ENABLED = True
 
 PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
-PD_THETA_DEG = 20.0
+PD_THETA_DEG = 18.0
 # Height measurement grid: auto-generated from range + count via linspace.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [0.3, 2.0]
-MEASURED_GRID_Y_RANGE = [-0.75, 0.75]
+MEASURED_GRID_X_RANGE = [0.0, 1.2]
+MEASURED_GRID_Y_RANGE = [-0.6, 0.6]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
@@ -57,6 +57,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
         rays_top_ratio = 0.2           # 每扇区取前 20% 最远点进行距离平均
+        rays_power = 6                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
         rays_smoothing_alpha = 0.4     # 世界帧方向 EMA 平滑因子
         rays_epsilon = 0.01            # 速度分母软化项
 
@@ -119,7 +120,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         turn_angle_deg_max = 55.0  # 最大转弯角度 (deg), 课程从 0° 到 55°
         diagonal_length = 3.0      # 转弯斜段长度 (m)
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
-        goal_forward_margin = 0.6  # 终点向前挪动距离 (m)
+        goal_forward_margin = 1.5  # 终点向前挪动距离 (m)
         goal_radius = 1.6          # 终点半径 (m)
 
     class commands(Go2RoughCfg.commands):

@@ -636,7 +636,7 @@ class Go2LidarPDRiskNet(Go2):
             idx_mask = torch.arange(k_max, device=self.device).unsqueeze(0) < k.unsqueeze(1)
             d_i = (top_vals * idx_mask.float()).sum(dim=1) / k.float()  # (N,)
 
-            w_i = d_i.square()
+            w_i = (d_i / d_max).pow(float(cfg.rays_power))
 
             # Exclude envs where this sector has zero valid rays.
             w_i = torch.where(n_valid > 0, w_i, torch.zeros_like(w_i))
