@@ -9,7 +9,7 @@ from isaacgym import gymapi, gymtorch, gymutil
 from legged_gym.envs.go2.go2 import Go2
 from LidarSensor.lidar_sensor import LidarSensor
 from LidarSensor.sensor_config.lidar_sensor_config import LidarConfig, LidarType
-from legged_gym.utils.math_utils import quat_apply_yaw
+from legged_gym.utils.math_utils import quat_apply_yaw, quat_apply_yaw_inverse
 
 
 class Go2LidarPDRiskNet(Go2):
@@ -125,6 +125,16 @@ class Go2LidarPDRiskNet(Go2):
         _safe_idx = self.terrain_types.long().clamp(0, 3)
         self._channel_forward = _FORWARD_LOOKUP_TABLE[_safe_idx]
 
+        # Rays direction reward: smoothed world-frame direction (N, 2)
+        self._smooth_dir_world = torch.zeros(
+            self.num_envs, 2, device=self.device, dtype=torch.float, requires_grad=False)
+
+        # Precomputed 36 sector center unit directions (body frame, 2D)
+        sector_centers = torch.linspace(
+            -math.pi + math.pi / 36, math.pi - math.pi / 36, 36, device=self.device)
+        self._sector_dirs = torch.stack(
+            (torch.cos(sector_centers), torch.sin(sector_centers)), dim=1)  # (36, 2)
+
         # Per-cell goal offsets table (world frame, relative to env_origin)
         if hasattr(self.terrain, "goal_offsets") and np.any(self.terrain.goal_offsets):
             self._goal_offsets_table = torch.from_numpy(
@@ -160,6 +170,12 @@ class Go2LidarPDRiskNet(Go2):
         self._distal_ray_sector_ids = torch.floor(
             ray_azimuth_0_2pi[self._distal_mask] / sector_size
         ).long().clamp(min=0, max=35)
+
+        # Precompute per-sector distal ray indices for fast gather in _reward_rays.
+        self._sector_ray_indices = []
+        for s in range(36):
+            idx = torch.where(self._distal_ray_sector_ids == s)[0]
+            self._sector_ray_indices.append(idx)
 
     def _init_lidar_sensor(self):
         if not getattr(self.cfg.raycaster, "enable_raycast", False):
@@ -571,6 +587,10 @@ class Go2LidarPDRiskNet(Go2):
         if hasattr(self, 'last_last_actions'):
             self.last_last_actions[env_ids] = 0.
         self._update_lidar_history()
+        # Initialize rays smoothed direction to first target direction.
+        # Must happen after _update_lidar_history() so LiDAR data is fresh.
+        target_dir_world = self._compute_rays_target_dir()  # (N, 2)
+        self._smooth_dir_world[env_ids] = target_dir_world[env_ids]
 
     def _reward_vel_avoid(self):
         cfg = self.cfg.pd_risknet
@@ -578,38 +598,97 @@ class Go2LidarPDRiskNet(Go2):
         vel_err = torch.sum(torch.square(self.base_lin_vel[:, :2] - vel_target), dim=1)
         return torch.exp(-float(cfg.avoid_beta) * vel_err)
 
-    def _reward_rays(self):
-        d_max = float(self.cfg.pd_risknet.ray_max_distance)
-        dist_all = self.raycast_distances[:, self._distal_mask]  # (N, num_distal_raw)
-        valid = dist_all < (d_max - 0.001)  # exclude sky / no-hit rays at d_max
-        dist = torch.where(valid, dist_all, torch.zeros_like(dist_all))
+    def _compute_rays_target_dir(self):
+        """Compute world-frame weighted-average direction pointing toward open space.
 
-        n_sectors = 36
-        top_ratio = 0.25
+        Steps 1-3 of the design:
+        1. Per-sector top-20% farthest valid distal point average distance d_i
+        2. Square weights: w_i = d_i^2
+        3. Weighted average of sector center directions -> target_dir_body
 
-        sector_means = []
-        for s in range(n_sectors):
-            s_mask = self._distal_ray_sector_ids == s  # (num_distal_raw,)
-            s_dist = dist[:, s_mask]                    # (N, rays_in_sector)
-            s_valid = valid[:, s_mask]
+        Returns target_dir_world (N, 2) in world frame.
+        """
+        cfg = self.cfg.pd_risknet
+        d_max = float(cfg.ray_max_distance)
+        top_ratio = float(cfg.rays_top_ratio)
 
-            n_valid = s_valid.sum(dim=1, keepdim=True).clamp(min=1).float()  # (N, 1)
-            k = torch.clamp((n_valid * top_ratio).long(), min=1)            # (N, 1)
+        dist_all = self.raycast_distances[:, self._distal_mask]  # (N, num_distal)
+        valid = dist_all < (d_max - 0.001)
+
+        weighted_sum = torch.zeros(self.num_envs, 2, device=self.device)
+        weight_total = torch.zeros(self.num_envs, device=self.device)
+
+        for s in range(36):
+            indices = self._sector_ray_indices[s]
+            if len(indices) == 0:
+                continue
+
+            s_dist = dist_all[:, indices]                     # (N, rays_in_sector)
+            s_valid = valid[:, indices]
+
+            n_valid = s_valid.sum(dim=1)                       # (N,)
+            # Mask invalid distances to zero so they sort last.
+            s_dist = torch.where(s_valid, s_dist, torch.zeros_like(s_dist))
+            k = torch.clamp((n_valid.float() * top_ratio).long(), min=1)  # (N,)
             k_max = int(k.max().item())
 
-            top_vals, _ = torch.topk(s_dist, k=k_max, dim=1)  # (N, k_max)
+            # Take top-k farthest distances.
+            top_vals, _ = torch.topk(s_dist, k=k_max, dim=1)   # (N, k_max)
+            idx_mask = torch.arange(k_max, device=self.device).unsqueeze(0) < k.unsqueeze(1)
+            d_i = (top_vals * idx_mask.float()).sum(dim=1) / k.float()  # (N,)
 
-            idx = torch.arange(k_max, device=s_dist.device).unsqueeze(0).expand_as(top_vals)
-            keep = idx < k
-            top_sum = (top_vals * keep.float()).sum(dim=1)  # (N,)
-            sector_mean = top_sum / k.squeeze(1)            # (N,)
-            sector_means.append(sector_mean)
+            w_i = d_i.square()
 
-        sector_mean = torch.stack(sector_means, dim=1)  # (N, 36)
-        centers = torch.linspace(-math.pi + math.pi / 36, math.pi - math.pi / 36, 36, device=self.device)
-        weights = (1.0 + torch.cos(centers)) / 2.0
-        weights = weights.unsqueeze(0)
-        return (sector_mean * weights).sum(dim=1) / (weights.sum() * d_max)
+            # Exclude envs where this sector has zero valid rays.
+            w_i = torch.where(n_valid > 0, w_i, torch.zeros_like(w_i))
+
+            sec_dir = self._sector_dirs[s]                     # (2,)
+            weighted_sum = weighted_sum + w_i.unsqueeze(1) * sec_dir.unsqueeze(0)
+            weight_total = weight_total + w_i
+
+        # Normalize to unit direction (body frame).
+        target_norm = torch.norm(weighted_sum, dim=1, keepdim=True).clamp(min=1e-8)
+        target_dir_body = weighted_sum / target_norm
+
+        # Transform to world frame (yaw only).
+        target_dir_body_3d = torch.cat(
+            [target_dir_body, torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
+        target_dir_world = quat_apply_yaw(self.base_quat, target_dir_body_3d)[:, :2]
+
+        return target_dir_world
+
+    def _reward_rays(self):
+        """Direction-consistency reward: dot product of body velocity and smoothed open-space direction.
+
+        Steps 4-5 of the design:
+        4. World-frame EMA smoothing of target_dir
+        5. r = (v_body . smooth_dir_body) / max(|v_body|, eps)
+        Range [-1, 1]: +1 when moving exactly toward open space, -1 when moving away.
+        """
+        cfg = self.cfg.pd_risknet
+        alpha = float(cfg.rays_smoothing_alpha)
+        eps = float(cfg.rays_epsilon)
+
+        # Step 1-3: raw target direction (world frame).
+        target_dir_world = self._compute_rays_target_dir()  # (N, 2)
+
+        # Step 4: EMA smooth in world frame.
+        self._smooth_dir_world = (
+            alpha * target_dir_world + (1.0 - alpha) * self._smooth_dir_world
+        )
+        smooth_norm = torch.norm(self._smooth_dir_world, dim=1, keepdim=True).clamp(min=1e-8)
+        self._smooth_dir_world = self._smooth_dir_world / smooth_norm
+
+        # Step 5: direction consistency reward in body frame.
+        smooth_dir_world_3d = torch.cat(
+            [self._smooth_dir_world, torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
+        smooth_dir_body = quat_apply_yaw_inverse(self.base_quat, smooth_dir_world_3d)[:, :2]
+
+        v_body = self.base_lin_vel[:, :2]
+        v_norm = torch.norm(v_body, dim=1)
+        dot = (v_body * smooth_dir_body).sum(dim=1)
+
+        return dot / torch.clamp(v_norm, min=eps)
 
     def _reward_move_distance(self):
         dist = torch.norm(self.base_pos[:, :2] - self.env_origins[:, :2], dim=1)

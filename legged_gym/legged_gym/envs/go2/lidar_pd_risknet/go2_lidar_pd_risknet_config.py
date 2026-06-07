@@ -55,6 +55,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_speed_limit = 1.3  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
+        # Rays direction-consistency reward (replaces top-k distance scoring).
+        rays_top_ratio = 0.2           # 每扇区取前 20% 最远点进行距离平均
+        rays_smoothing_alpha = 0.4     # 世界帧方向 EMA 平滑因子
+        rays_epsilon = 0.01            # 速度分母软化项
+
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
