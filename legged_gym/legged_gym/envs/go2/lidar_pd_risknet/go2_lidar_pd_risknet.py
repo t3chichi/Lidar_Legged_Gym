@@ -616,7 +616,6 @@ class Go2LidarPDRiskNet(Go2):
         valid = dist_all < (d_max - 0.001)
 
         weighted_sum = torch.zeros(self.num_envs, 2, device=self.device)
-        weight_total = torch.zeros(self.num_envs, device=self.device)
 
         for s in range(36):
             indices = self._sector_ray_indices[s]
@@ -644,7 +643,6 @@ class Go2LidarPDRiskNet(Go2):
 
             sec_dir = self._sector_dirs[s]                     # (2,)
             weighted_sum = weighted_sum + w_i.unsqueeze(1) * sec_dir.unsqueeze(0)
-            weight_total = weight_total + w_i
 
         # Normalize to unit direction (body frame).
         target_norm = torch.norm(weighted_sum, dim=1, keepdim=True).clamp(min=1e-8)
