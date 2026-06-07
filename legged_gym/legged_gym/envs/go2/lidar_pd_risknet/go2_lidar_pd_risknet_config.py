@@ -56,8 +56,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
-        rays_top_ratio = 0.2           # 每扇区取前 20% 最远点进行距离平均
-        rays_power = 6                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
+        rays_top_ratio = 0.4           # 每扇区取前 40% 最远点进行距离平均
+        rays_power = 4                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
         rays_smoothing_alpha = 0.4     # 世界帧方向 EMA 平滑因子
         rays_epsilon = 0.01            # 速度分母软化项
 
@@ -185,11 +185,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #override
             # lin_vel_z = -1.0e-3
-            collision = -1.0e-1
+            collision = -5.0e-2
 
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
-            curvature = -0.05  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
+            curvature = 0.00  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
 
 
     class normalization(Go2RoughCfg.normalization):
