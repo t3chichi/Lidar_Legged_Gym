@@ -669,16 +669,16 @@ class Go2LidarPDRiskNet(Go2):
         return target_dir_world
 
     def _reward_rays(self):
-        """Direction-consistency reward: dot product of body velocity and smoothed open-space direction.
+        """Heading-consistency reward: cos(θ) between body forward axis and smooth_dir.
 
-        Steps 4-5 of the design:
-        4. World-frame EMA smoothing of target_dir
-        5. r = (v_body . smooth_dir_body) / max(|v_body|, eps)
-        Range [-1, 1]: +1 when moving exactly toward open space, -1 when moving away.
+        r = [1, 0] · smooth_dir_body = cos(θ) ∈ [-1, 1].
+        +1 when body faces exactly toward open space, -1 when facing away.
+        Uses the body-forward constant [1,0] instead of v_body to break the
+        self-exciting feedback loop where turning changes both v_body and
+        smooth_dir_body simultaneously.
         """
         cfg = self.cfg.pd_risknet
         alpha = float(cfg.rays_smoothing_alpha)
-        eps = float(cfg.rays_epsilon)
 
         # Step 1-3: raw target direction (world frame).
         target_dir_world = self._compute_rays_target_dir()  # (N, 2)
@@ -690,16 +690,12 @@ class Go2LidarPDRiskNet(Go2):
         smooth_norm = torch.norm(self._smooth_dir_world, dim=1, keepdim=True).clamp(min=1e-8)
         self._smooth_dir_world = self._smooth_dir_world / smooth_norm
 
-        # Step 5: direction consistency reward in body frame.
+        # Step 5: body-forward (constant [1, 0]) dot smooth_dir_body → cos(θ).
         smooth_dir_world_3d = torch.cat(
             [self._smooth_dir_world, torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
         smooth_dir_body = quat_apply_yaw_inverse(self.base_quat, smooth_dir_world_3d)[:, :2]
 
-        v_body = self.base_lin_vel[:, :2]
-        v_norm = torch.norm(v_body, dim=1)
-        dot = (v_body * smooth_dir_body).sum(dim=1)
-
-        return dot / torch.clamp(v_norm, min=eps)
+        return smooth_dir_body[:, 0]
 
     def _reward_move_distance(self):
         dist = torch.norm(self.base_pos[:, :2] - self.env_origins[:, :2], dim=1)
