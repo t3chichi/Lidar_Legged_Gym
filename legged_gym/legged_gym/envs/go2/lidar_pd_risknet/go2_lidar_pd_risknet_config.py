@@ -57,9 +57,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
         rays_top_ratio = 0.4           # 每扇区取前 40% 最远点进行距离平均
-        rays_power = 4                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
+        rays_power = 3                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
         rays_smoothing_alpha = 0.2     # 世界帧方向 EMA 平滑因子
-        rays_epsilon = 0.01            # 速度分母软化项
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
