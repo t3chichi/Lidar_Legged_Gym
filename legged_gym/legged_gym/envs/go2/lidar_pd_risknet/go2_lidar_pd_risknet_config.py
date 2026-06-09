@@ -49,10 +49,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_noise_std = 0.05
 
         n_sectors = 36
-        avoid_distance_thresh = 1.5
-        avoid_alpha = 3.0
+        avoid_distance_thresh = 1.0
+        avoid_alpha = 2.0
         avoid_beta = 1.0
-        avoid_speed_limit = 1.3  # 避障速度上界 (m/s)
+        avoid_speed_limit = 1.4  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
@@ -184,11 +184,11 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #override
             # lin_vel_z = -1.0e-3
-            collision = -5.0e-2
+            collision = -2.0e-2
 
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
-            curvature = -0.05  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
+            curvature = -0.005  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
 
 
     class normalization(Go2RoughCfg.normalization):
