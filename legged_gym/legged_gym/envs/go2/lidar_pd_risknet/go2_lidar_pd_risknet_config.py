@@ -49,15 +49,15 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_noise_std = 0.05
 
         n_sectors = 36
-        avoid_distance_thresh = 1.0
-        avoid_alpha = 2.0
+        avoid_distance_thresh = 1.5
+        avoid_alpha = 2.5
         avoid_beta = 1.0
-        avoid_speed_limit = 1.4  # 避障速度上界 (m/s)
+        avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
         rays_top_ratio = 0.4           # 每扇区取前 40% 最远点进行距离平均
-        rays_power = 3                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
+        rays_power = 4                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
         rays_smoothing_alpha = 0.2     # 世界帧方向 EMA 平滑因子
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -108,19 +108,19 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
         terrain_length = 15
         terrain_width = 15
-        num_rows = 5  # 振幅课程: 0→0.25→0.5→0.75→1.0
+        num_rows = 5
         num_cols = 4
           
 
         # 梯形波弯曲通道地形配置
-        corridor_width = 3.0       # 通道宽度 (m)
+        corridor_width = 3.5       # 通道宽度 (m)
         wall_height = 1.5          # 墙壁高度 (m)
         wall_thickness = 2         # 墙壁厚度 (m)
         turn_angle_deg_max = 55.0  # 最大转弯角度 (deg), 课程从 0° 到 55°
         diagonal_length = 3.0      # 转弯斜段长度 (m)
         end_margin = 0.5           # 通道两端与地块边缘的间距 (m)
-        goal_forward_margin = 1.5  # 终点向前挪动距离 (m)
-        goal_radius = 1.6          # 终点半径 (m)
+        goal_forward_margin = 1.0  # 终点向前挪动距离 (m)
+        goal_radius = 1.8          # 终点半径 (m)
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
