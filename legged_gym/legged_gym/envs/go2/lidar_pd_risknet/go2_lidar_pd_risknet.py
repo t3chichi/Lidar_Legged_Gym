@@ -671,6 +671,9 @@ class Go2LidarPDRiskNet(Go2):
     def _compute_rays_omega_target(self):
         """Convert smoothed open-space direction to a target yaw angular velocity.
 
+        Precondition: self._smooth_dir_world must be current (updated by
+        _reward_rays' EMA step before this call).
+
         open_dir_world (EMA smoothed) → body-frame heading_error →
         ω_target = clip(k_ω × heading_error, ±ω_max).
 
