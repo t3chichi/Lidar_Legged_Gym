@@ -48,7 +48,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 36
         avoid_distance_thresh = 1.0
-        avoid_alpha = 2.5
+        avoid_alpha = 2.0
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
 

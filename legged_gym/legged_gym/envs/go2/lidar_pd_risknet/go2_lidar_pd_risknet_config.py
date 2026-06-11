@@ -49,8 +49,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_noise_std = 0.05
 
         n_sectors = 36
-        avoid_distance_thresh = 1.5
-        avoid_alpha = 2.5
+        avoid_distance_thresh = 1.0
+        avoid_alpha = 2.0
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
 
@@ -62,7 +62,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # Rays direction-consistency reward (replaces top-k distance scoring).
         rays_top_ratio = 0.4           # 每扇区取前 40% 最远点进行距离平均
         rays_power = 4                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
-        rays_smoothing_alpha = 0.2     # 世界帧方向 EMA 平滑因子
+        rays_smoothing_alpha = 0.4     # 世界帧方向 EMA 平滑因子
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
@@ -174,7 +174,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 0.5
+            tracking_lin_vel = 0.0
             tracking_ang_vel = 0.0  
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
