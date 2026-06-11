@@ -668,14 +668,39 @@ class Go2LidarPDRiskNet(Go2):
 
         return target_dir_world
 
-    def _reward_rays(self):
-        """Heading-consistency reward: cos(θ) between body forward axis and smooth_dir.
+    def _compute_rays_omega_target(self):
+        """Convert smoothed open-space direction to a target yaw angular velocity.
 
-        r = [1, 0] · smooth_dir_body = cos(θ) ∈ [-1, 1].
-        +1 when body faces exactly toward open space, -1 when facing away.
-        Uses the body-forward constant [1,0] instead of v_body to break the
-        self-exciting feedback loop where turning changes both v_body and
-        smooth_dir_body simultaneously.
+        open_dir_world (EMA smoothed) → body-frame heading_error →
+        ω_target = clip(k_ω × heading_error, ±ω_max).
+
+        Returns:
+            omega_target (N,): target yaw angular velocity in rad/s.
+        """
+        cfg = self.cfg.pd_risknet
+        k_omega = float(cfg.rays_omega_gain)
+        omega_max = float(cfg.rays_omega_max)
+
+        # open_dir_world → body frame (yaw only rotation)
+        smooth_dir_world_3d = torch.cat(
+            [self._smooth_dir_world, torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
+        open_dir_body = quat_apply_yaw_inverse(self.base_quat, smooth_dir_world_3d)[:, :2]
+
+        # heading_error = signed angle from body-forward [1, 0] to open_dir_body
+        heading_error = torch.atan2(open_dir_body[:, 1], open_dir_body[:, 0])
+
+        omega_target = k_omega * heading_error
+        omega_target = torch.clamp(omega_target, -omega_max, omega_max)
+
+        return omega_target
+
+    def _reward_rays(self):
+        """Angular-velocity tracking reward: encourages turning toward open space.
+
+        Computes ω_target from the EMA-smoothed open-space direction, then
+        rewards the robot for matching its actual yaw angular velocity to it.
+
+        r = exp(-|ω_actual - ω_target|²)
         """
         cfg = self.cfg.pd_risknet
         alpha = float(cfg.rays_smoothing_alpha)
@@ -690,12 +715,13 @@ class Go2LidarPDRiskNet(Go2):
         smooth_norm = torch.norm(self._smooth_dir_world, dim=1, keepdim=True).clamp(min=1e-8)
         self._smooth_dir_world = self._smooth_dir_world / smooth_norm
 
-        # Step 5: body-forward (constant [1, 0]) dot smooth_dir_body → cos(θ).
-        smooth_dir_world_3d = torch.cat(
-            [self._smooth_dir_world, torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
-        smooth_dir_body = quat_apply_yaw_inverse(self.base_quat, smooth_dir_world_3d)[:, :2]
+        # Step 5: compute ω_target from smoothed direction.
+        omega_target = self._compute_rays_omega_target()  # (N,)
 
-        return smooth_dir_body[:, 0]
+        # Step 6: reward matching actual yaw angular velocity to ω_target.
+        omega_actual = self.base_ang_vel[:, 2]
+        omega_err = omega_actual - omega_target
+        return torch.exp(-omega_err * omega_err)
 
     def _reward_move_distance(self):
         dist = torch.norm(self.base_pos[:, :2] - self.env_origins[:, :2], dim=1)
