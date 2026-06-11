@@ -12,7 +12,7 @@ PD_PROXIMAL_POINTS = 512
 PD_DISTAL_POINTS = 256
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
-HEADING_OBS_ENABLED = True
+HEADING_OBS_ENABLED = False
 
 PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
 PD_THETA_DEG = 20.0
@@ -48,9 +48,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         n_sectors = 36
         avoid_distance_thresh = 1.0
-        avoid_alpha = 1.0
+        avoid_alpha = 2.5
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
+
+        # rays → ω_target 参数
+        rays_omega_gain = 0.5     # k_ω: heading_error → ω_target P 增益
+        rays_omega_max  = 0.5     # rad/s: 角速度指令上限
         ray_max_distance = 10.0
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
@@ -87,15 +91,12 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
 
     class commands(Go2RoughCfg.commands):
-        heading_command = True
-        heading_p_gain = 0.5       # P 增益
+        heading_command = False
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [-1, 1]   # 预训练：静止
-            lin_vel_y = [-0.5, 0.5]  # 横向速度，收窄防极端姿态
-            ang_vel_yaw = [0, 0]
-            heading = [-3.14, 3.14]
-            # heading = [0, 0]
+            lin_vel_x = [-1.0, 1.0]   # 预训练：静止
+            lin_vel_y = [-1.0, 1.0]  # 横向速度，收窄防极端姿态
+            ang_vel_yaw = [-1.0, 1.0]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
