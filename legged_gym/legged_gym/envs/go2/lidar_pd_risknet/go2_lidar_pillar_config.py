@@ -12,7 +12,7 @@ PD_PROXIMAL_POINTS = 512
 PD_DISTAL_POINTS = 256
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
-HEADING_OBS_ENABLED = True
+HEADING_OBS_ENABLED = False
 
 PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
 PD_THETA_DEG = 20.0
@@ -53,22 +53,23 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         avoid_alpha = 1.0
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
+
+        # rays → ω_target 参数
+        rays_omega_gain = 0.5     # k_ω: heading_error → ω_target P 增益
+        rays_omega_max  = 0.5     # rad/s: 角速度指令上限
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)，对齐 raycaster.max_distance
 
-        ray_forward_sector_count = 24     # rays 奖励使用的前方扇区数（扇区18=正前方，12扇区=±60°）
-        ray_forward_sector_center = 18
+        # Rays direction-consistency reward (replaces top-k distance scoring).
+        rays_top_ratio = 0.4           # 每扇区取前 40% 最远点进行距离平均
+        rays_power = 4                 # 距离归一化权重幂次: w_i = (d_i / d_max)^p
+        rays_smoothing_alpha = 0.2     # 世界帧方向 EMA 平滑因子
 
         # Spherical ray pattern used as raw LiDAR point cloud source.
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
-        y_backward_penalty_ratio = 0.1  # Y 后退惩罚系数
         collision_3d = False             # 正式训练：2D 水平连续平方
-
-        # 通道终点奖励
-        goal_enabled = True
-        goal_reward = 10.0
 
         # 地形课程升降级
         move_down_ratio = 0.4                 # 降级阈值：forward_dist / goal_dist < 此比例
@@ -122,15 +123,13 @@ class Go2LidarPillarCfg(Go2RoughCfg):
 
 
     class commands(Go2RoughCfg.commands):
-        heading_command = True
-        heading_p_gain = 0.5     # P 增益
+        heading_command = False
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.4, 0.8]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
-            ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [-3.14, 3.14]
+            ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -171,7 +170,7 @@ class Go2LidarPillarCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
             # tracking_lin_vel = 5.0e-1   
-            tracking_ang_vel = 2.0e-1   
+            tracking_ang_vel = 0.0
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
