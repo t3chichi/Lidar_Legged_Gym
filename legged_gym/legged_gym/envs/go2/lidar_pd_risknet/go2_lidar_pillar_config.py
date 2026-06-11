@@ -127,9 +127,9 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         resampling_time = 2.
         curriculum = False
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.4, 0.8]  # min max [m/s]
+            lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
-            ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
+            ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
