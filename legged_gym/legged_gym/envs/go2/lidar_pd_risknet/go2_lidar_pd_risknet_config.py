@@ -12,7 +12,7 @@ PD_PROXIMAL_POINTS = 512
 PD_DISTAL_POINTS = 256
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
-HEADING_OBS_ENABLED = True
+HEADING_OBS_ENABLED = False
 
 PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
 PD_THETA_DEG = 18.0
@@ -49,10 +49,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         heading_noise_std = 0.05
 
         n_sectors = 36
-        avoid_distance_thresh = 1.5
+        avoid_distance_thresh = 1.0
         avoid_alpha = 2.5
         avoid_beta = 1.0
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
+
+        # rays → ω_target 参数
+        rays_omega_gain = 0.5     # k_ω: heading_error → ω_target P 增益
+        rays_omega_max  = 0.5     # rad/s: 角速度指令上限
         ray_max_distance = 10.0  # rays 奖励截断距离 (m)
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
@@ -123,18 +127,14 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         goal_radius = 1.8          # 终点半径 (m)
 
     class commands(Go2RoughCfg.commands):
-        heading_command = True
-        heading_p_gain = 0.5     # P 增益
+        heading_command = False
         resampling_time = 2.
         curriculum = False
-
-        # heading_command = False
 
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            # heading = [0.87, 2.27]  #死代码, 各通道范围由heading_spread决定
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -174,8 +174,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 0.5   
-            tracking_ang_vel = 0.1  
+            tracking_lin_vel = 0.0   
+            tracking_ang_vel = 0.0  
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
             ang_vel_xy = -5.0e-2
@@ -188,7 +188,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
-            curvature = -0.005  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
+            curvature = -0.0  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
 
 
     class normalization(Go2RoughCfg.normalization):
