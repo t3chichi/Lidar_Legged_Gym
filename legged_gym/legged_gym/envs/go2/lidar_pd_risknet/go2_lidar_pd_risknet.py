@@ -108,6 +108,12 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self._last_channel_pos = torch.zeros(
+            self.num_envs,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
         self._consecutive_upgrade_count = torch.zeros(
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
@@ -597,6 +603,8 @@ class Go2LidarPDRiskNet(Go2):
         self.v_avoid[env_ids] = 0.0
         self.last_dist[env_ids] = torch.norm(
             self.base_pos[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
+        self._last_channel_pos[env_ids] = torch.sum(
+            self.base_pos[env_ids, :2] * self._channel_forward[env_ids], dim=1)
         if hasattr(self, 'last_last_actions'):
             self.last_last_actions[env_ids] = 0.
         self._update_lidar_history()
@@ -725,6 +733,19 @@ class Go2LidarPDRiskNet(Go2):
         omega_actual = self.base_ang_vel[:, 2]
         omega_err = omega_actual - omega_target
         return torch.exp(-omega_err * omega_err)
+
+    def _reward_channel_forward(self):
+        cfg = self.cfg.rewards
+        if getattr(cfg.scales, "channel_forward", 0.0) == 0.0:
+            return torch.zeros(self.num_envs, device=self.device)
+        p_cfg = self.cfg.pd_risknet
+        ratio = float(getattr(p_cfg, "channel_backward_ratio", 0.5))
+        channel_pos = torch.sum(self.base_pos[:, :2] * self._channel_forward, dim=1)
+        delta = channel_pos - self._last_channel_pos
+        self._last_channel_pos[:] = channel_pos
+        forward  = torch.clamp(delta, min=0.0)
+        backward = torch.clamp(-delta, min=0.0)
+        return forward - ratio * backward
 
     def _reward_move_distance(self):
         dist = torch.norm(self.base_pos[:, :2] - self.env_origins[:, :2], dim=1)
