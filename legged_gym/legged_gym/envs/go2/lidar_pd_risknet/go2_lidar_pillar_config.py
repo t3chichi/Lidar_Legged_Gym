@@ -69,6 +69,9 @@ class Go2LidarPillarCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
+        # channel_forward 沿通道方向后退惩罚倍率
+        channel_backward_ratio = 0.5    # 后退惩罚相对于前进的倍率
+
         collision_3d = False             # 正式训练：2D 水平连续平方
 
         # 地形课程升降级

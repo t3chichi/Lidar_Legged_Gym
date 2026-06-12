@@ -62,6 +62,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
+        # channel_forward 沿通道方向后退惩罚倍率
+        channel_backward_ratio = 0.5    # 后退惩罚相对于前进的倍率
+
         collision_3d = True   # 预训练：3D 全向二值（原版 legged_gym）
 
     class env(Go2RoughCfg.env):
