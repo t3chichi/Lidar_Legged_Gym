@@ -77,7 +77,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
         # 通道终点奖励
         goal_enabled = True
-        goal_reward = 10.0
+        goal_reward = 20.0
 
         # 地形课程升降级
         move_down_ratio = 0.5                 # 降级阈值：forward_dist / goal_dist < 此比例
@@ -186,9 +186,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             # lin_vel_z = -1.0e-3
             collision = -2.0e-2
 
-            goal = 10.0  # 通道终点到达奖励（任务特有，论文无通道场景）
+            goal = 20.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
-            curvature = -0.005  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
+            curvature = -0.0  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
 
 
     class normalization(Go2RoughCfg.normalization):
