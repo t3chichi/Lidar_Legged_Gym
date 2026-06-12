@@ -69,6 +69,9 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = spherical_num_azimuth * spherical_num_elevation
 
+        # channel_forward 沿通道方向后退惩罚倍率
+        channel_backward_ratio = 0.5    # 后退惩罚相对于前进的倍率
+
         collision_3d = False             # 正式训练：2D 水平连续平方
 
         # heading 随机范围: 围绕通道方向 ± spread (rad)
@@ -189,6 +192,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             goal = 20.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             curvature = -0.0  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
+            channel_forward = 10.0  # 沿通道方向前进/后退奖励
 
 
     class normalization(Go2RoughCfg.normalization):
