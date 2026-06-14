@@ -1013,7 +1013,6 @@ class Go2LidarPDRiskNet(Go2):
 
         # Draw pillar wireframes (soft-pretrain debug).
         if hasattr(self, '_pillar_boxes') and self._pillar_boxes:
-            import numpy as np
             verts = []
             colors = []
             for p_env_idx, cx, cy, sx, sy, h in self._pillar_boxes:
