@@ -114,6 +114,7 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self._pillar_boxes = []  # [(env_idx, cx, cy, sx, sy, h), ...] for debug viz
         self._consecutive_upgrade_count = torch.zeros(
             self.num_envs, device=self.device,
             dtype=torch.int32, requires_grad=False)
@@ -218,8 +219,8 @@ class Go2LidarPDRiskNet(Go2):
             pd_cfg = self.cfg.pd_risknet
             if getattr(pd_cfg, "soft_pretrain", False):
                 from legged_gym.utils.pillar_mesh import generate_pillar_lidar_mesh
-                vertices, triangles_i32 = generate_pillar_lidar_mesh(
-                    self.cfg.terrain, pd_cfg, device=self.device)
+                vertices, triangles_i32, self._pillar_boxes = generate_pillar_lidar_mesh(
+                    self.num_envs, self.cfg.env.env_spacing, pd_cfg, device=self.device)
             else:
                 plane_size = 100.0
                 vertices = torch.tensor(
@@ -1009,3 +1010,25 @@ class Go2LidarPDRiskNet(Go2):
             self.vis.draw_arrow(env_id, start.tolist(),
                                 (start + display_len * smooth_dir_3d).tolist(),
                                 width=0.01, color=(0, 1, 0))
+
+        # Draw pillar wireframes (soft-pretrain debug).
+        if hasattr(self, '_pillar_boxes') and self._pillar_boxes:
+            pillar_color = gymapi.Vec3(0.0, 0.6, 0.8)  # cyan
+            for p_env_idx, cx, cy, sx, sy, h in self._pillar_boxes:
+                if p_env_idx != env_id:
+                    continue
+                x0, x1 = cx - sx / 2.0, cx + sx / 2.0
+                y0, y1 = cy - sy / 2.0, cy + sy / 2.0
+                z0, z1 = 0.0, h
+                edges = [
+                    ([x0, y0, z0], [x1, y0, z0]), ([x1, y0, z0], [x1, y1, z0]),
+                    ([x1, y1, z0], [x0, y1, z0]), ([x0, y1, z0], [x0, y0, z0]),
+                    ([x0, y0, z1], [x1, y0, z1]), ([x1, y0, z1], [x1, y1, z1]),
+                    ([x1, y1, z1], [x0, y1, z1]), ([x0, y1, z1], [x0, y0, z1]),
+                    ([x0, y0, z0], [x0, y0, z1]), ([x1, y0, z0], [x1, y0, z1]),
+                    ([x1, y1, z0], [x1, y1, z1]), ([x0, y1, z0], [x0, y1, z1]),
+                ]
+                for a, b in edges:
+                    p0 = gymapi.Vec3(*a)
+                    p1 = gymapi.Vec3(*b)
+                    self.gym.add_lines(self.viewer, self.envs[env_id], 1.0, [p0, p1], pillar_color)
