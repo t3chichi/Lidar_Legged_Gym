@@ -90,28 +90,31 @@ def build_box_mesh(cx, cy, sx, sy, h):
     return verts, tris
 
 
-def generate_pillar_lidar_mesh(num_envs, env_spacing, pd_cfg, device='cuda:0'):
-    """Build a ground plane + per-env pillar clusters matching the actual env layout.
+def generate_pillar_lidar_mesh(terrain_cfg, pd_cfg, device='cuda:0'):
+    """Build a ground plane + pillar clusters per sub-terrain cell.
 
-    Uses the same sqrt-grid layout as _get_env_origins for plane terrain.
+    Uses terrain_cfg grid (num_rows, num_cols, terrain_length, terrain_width)
+    so pillar placement matches the formal pillar config parameters.
 
     Args:
-        num_envs: total number of environments.
-        env_spacing: spacing between env origins (meters).
+        terrain_cfg: terrain config with num_rows, num_cols, terrain_length,
+                     terrain_width, border_size.
         pd_cfg: pd_risknet config with pillar_* parameters.
         device: torch device string.
 
     Returns:
         (vertices, triangles_np, pillar_boxes)
-        pillar_boxes: list of (env_idx, cx, cy, sx, sy, h) in world meters.
+        pillar_boxes: list of (cell_id, cx, cy, sx, sy, h) where cell_id =
+                      row * num_cols + col.
     """
-    num_cols = int(np.floor(np.sqrt(num_envs)))
-    num_rows = int(np.ceil(num_envs / num_cols))
-    spacing = env_spacing
+    num_rows = terrain_cfg.num_rows
+    num_cols = terrain_cfg.num_cols
+    t_len = terrain_cfg.terrain_length
+    t_wid = terrain_cfg.terrain_width
+    border = getattr(terrain_cfg, 'border_size', 0.0)
 
-    total_x = num_cols * spacing
-    total_y = num_rows * spacing
-    border = spacing  # extra margin so border envs still see ground
+    total_x = num_cols * t_len
+    total_y = num_rows * t_wid
 
     # Ground plane
     plane_verts = np.array([
@@ -127,32 +130,20 @@ def generate_pillar_lidar_mesh(num_envs, env_spacing, pd_cfg, device='cuda:0'):
     vert_offset = 4
     pillar_boxes = []
 
-    spawn_r = float(pd_cfg.pillar_spawn_radius)
-    clear_r = float(pd_cfg.pillar_center_clear_radius)
-    min_sep = float(pd_cfg.pillar_min_separation)
-    count = int(pd_cfg.pillar_count)
-
-    # Clamp spawn/clear to env cell size
-    spawn_radius = min(spacing / 2.0 * 0.85, spawn_r)
-    clear_radius = min(clear_r, spawn_radius * 0.15) if clear_r > 0 else 0.0
-
     rng = np.random.RandomState(42)
 
     for row in range(num_rows):
         for col in range(num_cols):
-            env_idx = row * num_cols + col
-            if env_idx >= num_envs:
-                break
-
-            center_x = col * spacing + spacing / 2.0
-            center_y = row * spacing + spacing / 2.0
+            cell_id = row * num_cols + col
+            center_x = col * t_len + t_len / 2.0
+            center_y = row * t_wid + t_wid / 2.0
 
             pillars = generate_pillar_positions(
                 center_x=center_x, center_y=center_y,
-                spawn_radius=spawn_radius,
-                clear_radius=clear_radius,
-                min_separation=min_sep,
-                count=count,
+                spawn_radius=pd_cfg.pillar_spawn_radius,
+                clear_radius=pd_cfg.pillar_center_clear_radius,
+                min_separation=pd_cfg.pillar_min_separation,
+                count=pd_cfg.pillar_count,
                 size_x=None, size_y=None,
                 size_x_range=[pd_cfg.pillar_size_x_min, pd_cfg.pillar_size_x_max],
                 size_y_range=[pd_cfg.pillar_size_y_min, pd_cfg.pillar_size_y_max],
@@ -167,7 +158,7 @@ def generate_pillar_lidar_mesh(num_envs, env_spacing, pd_cfg, device='cuda:0'):
                 all_verts.append(verts)
                 all_tris.append(tris + vert_offset)
                 vert_offset += 8
-                pillar_boxes.append((env_idx, cx, cy, sx, sy, h))
+                pillar_boxes.append((cell_id, cx, cy, sx, sy, h))
 
     vertices_np = np.concatenate(all_verts, axis=0).astype(np.float32)
     triangles_np = np.concatenate(all_tris, axis=0).astype(np.int32)

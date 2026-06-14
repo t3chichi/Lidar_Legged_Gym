@@ -42,6 +42,45 @@ class Go2LidarPDRiskNet(Go2):
         if not hasattr(self, '_spawn_angles'):
             self._spawn_angles = None
 
+    def _get_env_origins(self):
+        pd_cfg = self.cfg.pd_risknet
+        if getattr(pd_cfg, "soft_pretrain", False):
+            from math import ceil
+
+            num_rows = self.cfg.terrain.num_rows
+            num_cols = self.cfg.terrain.num_cols
+            t_len = self.cfg.terrain.terrain_length
+            t_wid = self.cfg.terrain.terrain_width
+            cells = num_rows * num_cols
+            envs_per_cell = int(ceil(self.num_envs / cells))
+
+            # Flat cell index: [0]*256, [1]*256, ..., [15]*256
+            cell_idx = torch.div(
+                torch.arange(self.num_envs, device=self.device),
+                envs_per_cell, rounding_mode='floor'
+            ).to(torch.long).clamp(0, cells - 1)
+
+            # Split into (row, col) for 2D grid indexing.
+            self.terrain_levels = torch.div(cell_idx, num_cols, rounding_mode='floor')
+            self.terrain_types = torch.fmod(cell_idx, num_cols)
+            self.max_terrain_level = 1
+
+            # Build manual terrain_origins from grid cell centres.
+            origins = torch.zeros(num_rows, num_cols, 3, device=self.device)
+            for r in range(num_rows):
+                for c in range(num_cols):
+                    origins[r, c, 0] = c * t_len + t_len / 2.0
+                    origins[r, c, 1] = r * t_wid + t_wid / 2.0
+
+            self.custom_origins = True
+            self.terrain_origins = origins
+            self.env_origins = torch.zeros(self.num_envs, 3, device=self.device)
+            self.env_origins[:] = self.terrain_origins[self.terrain_levels,
+                                                       self.terrain_types]
+            self._spawn_angles = None
+        else:
+            super()._get_env_origins()
+
     def _get_noise_scale_vec(self, cfg):
         """Use Go2 proprio noise only; keep LiDAR history channels noise-free by default.
 
@@ -220,7 +259,7 @@ class Go2LidarPDRiskNet(Go2):
             if getattr(pd_cfg, "soft_pretrain", False):
                 from legged_gym.utils.pillar_mesh import generate_pillar_lidar_mesh
                 vertices, triangles_i32, self._pillar_boxes = generate_pillar_lidar_mesh(
-                    self.num_envs, self.cfg.env.env_spacing, pd_cfg, device=self.device)
+                    self.cfg.terrain, pd_cfg, device=self.device)
             else:
                 plane_size = 100.0
                 vertices = torch.tensor(
@@ -1013,10 +1052,15 @@ class Go2LidarPDRiskNet(Go2):
 
         # Draw pillar wireframes (soft-pretrain debug).
         if hasattr(self, '_pillar_boxes') and self._pillar_boxes:
+            # Match pillars to the viewed env's terrain cell.
+            if hasattr(self, 'terrain_types') and hasattr(self, 'terrain_levels'):
+                cell_id = self.terrain_levels[env_id].item() * 4 + self.terrain_types[env_id].item()
+            else:
+                cell_id = 0
             verts = []
             colors = []
-            for p_env_idx, cx, cy, sx, sy, h in self._pillar_boxes:
-                if p_env_idx != env_id:
+            for p_cell_id, cx, cy, sx, sy, h in self._pillar_boxes:
+                if p_cell_id != cell_id:
                     continue
                 x0, x1 = cx - sx / 2.0, cx + sx / 2.0
                 y0, y1 = cy - sy / 2.0, cy + sy / 2.0
