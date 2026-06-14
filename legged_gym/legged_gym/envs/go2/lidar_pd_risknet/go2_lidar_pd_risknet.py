@@ -128,8 +128,12 @@ class Go2LidarPDRiskNet(Go2):
             [0.0, -1.0],   # direction 2: -Y (南)
             [-1.0, 0.0],   # direction 3: -X (西)
         ], device=self.device, dtype=torch.float)
-        _safe_idx = self.terrain_types.long().clamp(0, 3)
-        self._channel_forward = _FORWARD_LOOKUP_TABLE[_safe_idx]
+        if hasattr(self, "terrain_types"):
+            _safe_idx = self.terrain_types.long().clamp(0, 3)
+            self._channel_forward = _FORWARD_LOOKUP_TABLE[_safe_idx]
+        else:
+            self._channel_forward = torch.zeros(
+                self.num_envs, 2, device=self.device, dtype=torch.float)
 
         # Rays direction reward: smoothed world-frame direction (N, 2)
         self._smooth_dir_world = torch.zeros(
