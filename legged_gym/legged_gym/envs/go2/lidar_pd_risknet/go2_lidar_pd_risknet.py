@@ -1013,7 +1013,9 @@ class Go2LidarPDRiskNet(Go2):
 
         # Draw pillar wireframes (soft-pretrain debug).
         if hasattr(self, '_pillar_boxes') and self._pillar_boxes:
-            pillar_color = gymapi.Vec3(0.0, 0.6, 0.8)  # cyan
+            import numpy as np
+            verts = []
+            colors = []
             for p_env_idx, cx, cy, sx, sy, h in self._pillar_boxes:
                 if p_env_idx != env_id:
                     continue
@@ -1029,6 +1031,11 @@ class Go2LidarPDRiskNet(Go2):
                     ([x1, y1, z0], [x1, y1, z1]), ([x0, y1, z0], [x0, y1, z1]),
                 ]
                 for a, b in edges:
-                    p0 = gymapi.Vec3(*a)
-                    p1 = gymapi.Vec3(*b)
-                    self.gym.add_lines(self.viewer, self.envs[env_id], 1.0, [p0, p1], pillar_color)
+                    verts.extend(a + b)
+                    colors.extend([0.0, 0.6, 0.8] * 2)  # cyan
+            if verts:
+                verts_np = np.array(verts, dtype=np.float32)
+                colors_np = np.array(colors, dtype=np.float32)
+                num_lines = len(verts) // 3 // 2
+                self.gym.add_lines(self.viewer, self.envs[env_id], num_lines,
+                                   verts_np, colors_np)
