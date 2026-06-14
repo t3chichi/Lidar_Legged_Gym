@@ -55,9 +55,10 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
 
         # rays → ω_target 参数
-        rays_omega_gain = 0.5     # k_ω: heading_error → ω_target P 增益
-        rays_omega_max  = 0.5     # rad/s: 角速度指令上限
-        ray_max_distance = 10.0  # rays 奖励截断距离 (m)
+        rays_omega_gain   = 0.5     # k_ω: heading_error → ω_target P 增益
+        rays_omega_max    = 0.5     # rad/s: 角速度指令上限
+        rays_omega_sigma  = 0.25    # ω_err 高斯核宽度，与 tracking_sigma 对齐
+        ray_max_distance  = 10.0    # rays 奖励截断距离 (m)
 
         # Rays direction-consistency reward (replaces top-k distance scoring).
         rays_top_ratio = 0.4           # 每扇区取前 40% 最远点进行距离平均

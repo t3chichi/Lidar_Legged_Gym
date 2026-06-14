@@ -786,7 +786,8 @@ class Go2LidarPDRiskNet(Go2):
         # Step 6: reward matching actual yaw angular velocity to ω_target.
         omega_actual = self.base_ang_vel[:, 2]
         omega_err = omega_actual - omega_target
-        return torch.exp(-omega_err * omega_err)
+        sigma = float(getattr(cfg, "rays_omega_sigma", 0.25))
+        return torch.exp(-omega_err * omega_err / sigma)
 
     def _reward_channel_forward(self):
         cfg = self.cfg.rewards

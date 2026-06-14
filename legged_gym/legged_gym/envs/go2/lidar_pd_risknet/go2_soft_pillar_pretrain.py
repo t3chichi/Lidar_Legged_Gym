@@ -49,9 +49,10 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         avoid_speed_limit = 1.0
 
         # rays → ω_target
-        rays_omega_gain = 0.5
-        rays_omega_max  = 0.5
-        ray_max_distance = 10.0
+        rays_omega_gain   = 0.5
+        rays_omega_max    = 0.5
+        rays_omega_sigma  = 0.25   # 与 tracking_sigma 对齐
+        ray_max_distance  = 10.0
 
         rays_top_ratio = 0.4
         rays_power = 4
