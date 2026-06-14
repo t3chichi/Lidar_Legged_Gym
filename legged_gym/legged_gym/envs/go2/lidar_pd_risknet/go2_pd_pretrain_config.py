@@ -141,8 +141,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #flat_reward
             termination = -0.0  # 终止惩罚：在环境终止时给予负奖励，避免策略利用终止状态
-            tracking_lin_vel = 0.0  # 线速度跟踪奖励：鼓励按指令线速度前进
-            tracking_ang_vel = 0.0  # 角速度跟踪奖励：鼓励按指令角速度跟踪朝向
+            tracking_lin_vel = 1.0  # 线速度跟踪奖励：鼓励按指令线速度前进
+            tracking_ang_vel = 0.5  # 角速度跟踪奖励：鼓励按指令角速度跟踪朝向
             lin_vel_z = -2.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
             ang_vel_xy = -0.05  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
             orientation = -0.  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
