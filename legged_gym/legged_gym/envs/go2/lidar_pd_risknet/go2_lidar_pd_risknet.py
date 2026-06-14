@@ -1052,16 +1052,9 @@ class Go2LidarPDRiskNet(Go2):
 
         # Draw pillar wireframes (soft-pretrain debug).
         if hasattr(self, '_pillar_boxes') and self._pillar_boxes:
-            # Match pillars to the viewed env's terrain cell.
-            if hasattr(self, 'terrain_types') and hasattr(self, 'terrain_levels'):
-                cell_id = self.terrain_levels[env_id].item() * 4 + self.terrain_types[env_id].item()
-            else:
-                cell_id = 0
             verts = []
             colors = []
             for p_cell_id, cx, cy, sx, sy, h in self._pillar_boxes:
-                if p_cell_id != cell_id:
-                    continue
                 x0, x1 = cx - sx / 2.0, cx + sx / 2.0
                 y0, y1 = cy - sy / 2.0, cy + sy / 2.0
                 z0, z1 = 0.0, h
