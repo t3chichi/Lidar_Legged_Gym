@@ -671,7 +671,8 @@ class Go2LidarPDRiskNet(Go2):
         cfg = self.cfg.pd_risknet
         vel_target = self.commands[:, :2] + self.v_avoid
         vel_err = torch.sum(torch.square(self.base_lin_vel[:, :2] - vel_target), dim=1)
-        return torch.exp(-float(cfg.avoid_beta) * vel_err)
+        sigma = float(getattr(cfg, "avoid_sigma", 0.25))
+        return torch.exp(-vel_err / sigma)
 
     def _compute_rays_target_dir(self):
         """Compute world-frame weighted-average direction pointing toward open space.

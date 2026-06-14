@@ -46,6 +46,7 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.0
         avoid_alpha = 2.0
         avoid_beta = 1.0
+        avoid_sigma = 0.25    # 与 tracking_sigma 对齐
         avoid_speed_limit = 1.0
 
         # rays → ω_target

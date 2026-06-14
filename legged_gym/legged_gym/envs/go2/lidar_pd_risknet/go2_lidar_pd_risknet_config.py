@@ -52,6 +52,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_distance_thresh = 1.0
         avoid_alpha = 2.0
         avoid_beta = 1.0
+        avoid_sigma = 0.25    # 与 tracking_sigma 对齐
         avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
 
         # rays → ω_target 参数
