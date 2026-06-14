@@ -68,7 +68,7 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         soft_pretrain = True
 
         # 柱子参数（与正式梅花桩一致，可在 config 中调整）
-        pillar_count = 20
+        pillar_count = 30
         pillar_spawn_radius = 7.5
         pillar_size_x_min = 0.40
         pillar_size_x_max = 0.60
@@ -76,8 +76,8 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         pillar_size_y_max = 0.60
         pillar_height_min = 1.00
         pillar_height_max = 1.50
-        pillar_min_separation = 3.5
-        pillar_center_clear_radius = 2.5
+        pillar_min_separation = 2.5
+        pillar_center_clear_radius = 2.0
         pillar_allow_height_variation = True
 
         collision_3d = False
@@ -110,7 +110,7 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         heading_command = False
         resampling_time = 4.
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [-1.0, 1.0]
+            lin_vel_x = [0.5, 1.0]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]    # 无角速度指令
 
