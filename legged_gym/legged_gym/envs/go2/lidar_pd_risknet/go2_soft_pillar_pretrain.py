@@ -68,21 +68,22 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         soft_pretrain = True
 
         # 柱子参数（与正式梅花桩一致，可在 config 中调整）
-        pillar_count = 30
-        pillar_spawn_radius = 9.0
+        pillar_count = 20
+        pillar_spawn_radius = 7.5
         pillar_size_x_min = 0.40
         pillar_size_x_max = 0.60
         pillar_size_y_min = 0.40
         pillar_size_y_max = 0.60
-        pillar_height_min = 0.60
-        pillar_height_max = 1.00
-        pillar_min_separation = 2.5
-        pillar_center_clear_radius = 1.6
+        pillar_height_min = 1.00
+        pillar_height_max = 1.50
+        pillar_min_separation = 3.5
+        pillar_center_clear_radius = 2.5
         pillar_allow_height_variation = True
 
         collision_3d = False
 
     class env(Go2RoughCfg.env):
+        episode_length_s = 15
         num_observations = PD_PROPRIO_DIM + OBS_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         enable_fall_termination = False
