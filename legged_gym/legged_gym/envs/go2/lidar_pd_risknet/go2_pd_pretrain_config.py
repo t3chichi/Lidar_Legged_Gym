@@ -20,8 +20,8 @@ PD_THETA_DEG = 20.0
 # Counts must match the main risknet config (17×11=187) for weight transfer.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [-0.0, 2.0]
-MEASURED_GRID_Y_RANGE = [-0.7, 0.7]
+MEASURED_GRID_X_RANGE = [0.1, 1.5]
+MEASURED_GRID_Y_RANGE = [-0.6, 0.6]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
@@ -141,8 +141,8 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
 
             #flat_reward
             termination = -0.0  # 终止惩罚：在环境终止时给予负奖励，避免策略利用终止状态
-            tracking_lin_vel = 1.0  # 线速度跟踪奖励：鼓励按指令线速度前进
-            tracking_ang_vel = 0.5  # 角速度跟踪奖励：鼓励按指令角速度跟踪朝向
+            tracking_lin_vel = 0.0  # 线速度跟踪奖励：鼓励按指令线速度前进
+            tracking_ang_vel = 0.0  # 角速度跟踪奖励：鼓励按指令角速度跟踪朝向
             lin_vel_z = -2.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
             ang_vel_xy = -0.05  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
             orientation = -0.  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
