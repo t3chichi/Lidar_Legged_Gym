@@ -146,7 +146,7 @@ class Go2LidarPDRiskNet(Go2):
             (torch.cos(sector_centers), torch.sin(sector_centers)), dim=1)  # (36, 2)
 
         # Per-cell goal offsets table (world frame, relative to env_origin)
-        if hasattr(self.terrain, "goal_offsets") and np.any(self.terrain.goal_offsets):
+        if hasattr(self, "terrain") and hasattr(self.terrain, "goal_offsets") and np.any(self.terrain.goal_offsets):
             self._goal_offsets_table = torch.from_numpy(
                 self.terrain.goal_offsets).to(self.device).to(torch.float)
         else:
