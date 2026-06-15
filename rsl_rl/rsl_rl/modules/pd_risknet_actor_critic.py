@@ -492,7 +492,8 @@ class PDRiskNetActorCritic(nn.Module):
             end = min(start + chunk_size, B)
             chunk = dist_points[start:end]  # (c, T, D, 3)
             c = end - start
-            chunk_seq = chunk.reshape(c * T_dist, D, 3)
+            # PointNet: per-point feature extraction → (c*T, D, 64)
+            chunk_seq = self.distal_pointnet(chunk.reshape(c * T_dist, D, 3))
             chunk_hidden = None
             if hidden is not None:
                 chunk_hidden = hidden[:, start:end, :]  # (1, c, 64)
