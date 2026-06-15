@@ -150,13 +150,20 @@ class PDRiskNetActorCritic(nn.Module):
 
         act_fn = resolve_nn_activation(activation)
 
+        self.proximal_pointnet = PerPointMLP(
+            in_dim=3, hidden_dims=[16, 32], out_dim=64, activation=activation
+        )
+        self.distal_pointnet = PerPointMLP(
+            in_dim=3, hidden_dims=[16, 32], out_dim=64, activation=activation
+        )
+
         self.proximal_gru = nn.GRU(
-            input_size=3,
+            input_size=64,
             hidden_size=self.proximal_feature_dim,
             batch_first=True,
         )
         self.distal_gru = nn.GRU(
-            input_size=3,
+            input_size=64,
             hidden_size=self.distal_feature_dim,
             batch_first=True,
         )
