@@ -42,6 +42,31 @@ def _quat_apply(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return v + q_scalar * t + torch.cross(q_vec_exp, t, dim=-1)
 
 
+class PerPointMLP(nn.Module):
+    """Per-point shared MLP for geometric feature extraction.
+
+    Maps raw 3D coordinates to a feature vector through a shallow MLP.
+    No BatchNorm (unstable under RL mini-batch noise), no global pooling
+    (preserves spatial structure for downstream GRU)."""
+
+    def __init__(self, in_dim: int = 3, hidden_dims: list[int] = [16, 32],
+                 out_dim: int = 64, activation: str = "elu"):
+        super().__init__()
+        act_fn = resolve_nn_activation(activation)
+        layers = []
+        prev = in_dim
+        for h in hidden_dims:
+            layers.append(nn.Linear(prev, h))
+            layers.append(act_fn)
+            prev = h
+        layers.append(nn.Linear(prev, out_dim))
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (..., 3) → (..., out_dim)"""
+        return self.mlp(x)
+
+
 class PDRiskNetActorCritic(nn.Module):
     """PD-RiskNet actor-critic.
 
