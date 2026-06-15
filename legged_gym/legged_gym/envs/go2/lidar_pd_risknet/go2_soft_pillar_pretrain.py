@@ -56,8 +56,8 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         ray_max_distance  = 10.0
 
         rays_top_ratio = 0.4
-        rays_power = 4
-        rays_smoothing_alpha = 0.2
+        rays_power = 3
+        rays_smoothing_alpha = 0.3
 
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
@@ -71,7 +71,7 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
 
         # 柱子参数（与正式梅花桩一致，可在 config 中调整）
         pillar_count = 30
-        pillar_spawn_radius = 7.5
+        pillar_spawn_radius = 7.0
         pillar_size_x_min = 0.40
         pillar_size_x_max = 0.60
         pillar_size_y_min = 0.40
