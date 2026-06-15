@@ -49,7 +49,7 @@ class PerPointMLP(nn.Module):
     No BatchNorm (unstable under RL mini-batch noise), no global pooling
     (preserves spatial structure for downstream GRU)."""
 
-    def __init__(self, in_dim: int = 3, hidden_dims: list[int] = [16, 32],
+    def __init__(self, in_dim: int = 3, hidden_dims: list[int] | tuple = (16, 32),
                  out_dim: int = 64, activation: str = "elu"):
         super().__init__()
         act_fn = resolve_nn_activation(activation)
