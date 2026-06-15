@@ -461,7 +461,8 @@ class PDRiskNetActorCritic(nn.Module):
             chunk = prox_points[start:end]  # (c, T, P, 3)
             c = end - start
             # Reshape: (c*T, P, 3) -> batch_first GRU, seq_len=P
-            chunk_seq = chunk.reshape(c * T_prox, P, 3)
+            # PointNet: per-point feature extraction -> (c*T, P, 64)
+            chunk_seq = self.proximal_pointnet(chunk.reshape(c * T_prox, P, 3))
             if self.training:
                 _, chunk_h = checkpoint(self.proximal_gru, chunk_seq, use_reentrant=True)
             else:
