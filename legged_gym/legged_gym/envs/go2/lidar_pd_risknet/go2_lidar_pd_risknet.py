@@ -688,7 +688,9 @@ class Go2LidarPDRiskNet(Go2):
         d_max = float(cfg.ray_max_distance)
         top_ratio = float(cfg.rays_top_ratio)
 
-        dist_all = self.raycast_distances[:, self._distal_mask]  # (N, num_distal)
+        dist_all = self.avoid_distances[:, self._distal_mask]  # (N, num_distal)
+        # Note: _distal_mask ensures we only use upward-looking rays,
+        # so the ground filter in avoid_distances does not mask useful hits.
         valid = dist_all < (d_max - 0.001)
 
         weighted_sum = torch.zeros(self.num_envs, 2, device=self.device)
