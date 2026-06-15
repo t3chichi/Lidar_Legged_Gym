@@ -136,6 +136,13 @@ class Go2LidarPDRiskNet(Go2):
             dtype=torch.float,
             requires_grad=False,
         )
+        self._raw_distances = torch.full(
+            (self.num_envs, int(cfg.num_lidar_points)),
+            float(cfg.ray_max_distance),
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
         self.v_avoid = torch.zeros(
             self.num_envs,
             2,
@@ -364,6 +371,7 @@ class Go2LidarPDRiskNet(Go2):
         n_points = points_sensor.shape[1]
         dist = lidar_dist.view(self.num_envs, -1)
         max_dist = float(self.cfg.pd_risknet.ray_max_distance)
+        self._raw_distances.copy_(dist)  # raw, no ground filter, no noise — for rays
 
         # Sensor frame → base frame transform (expand avoids 98 MB repeat alloc).
         quat_1x4 = self._sensor_offset_quat[0:1]
@@ -654,6 +662,7 @@ class Go2LidarPDRiskNet(Go2):
         # self.lidar_history[env_ids] = 0.0
         self.lidar_points_base[env_ids] = 0.0
         self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
+        self._raw_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
         self.v_avoid[env_ids] = 0.0
         self.last_dist[env_ids] = torch.norm(
             self.base_pos[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
@@ -688,9 +697,8 @@ class Go2LidarPDRiskNet(Go2):
         d_max = float(cfg.ray_max_distance)
         top_ratio = float(cfg.rays_top_ratio)
 
-        dist_all = self.avoid_distances[:, self._distal_mask]  # (N, num_distal)
-        # Note: _distal_mask ensures we only use upward-looking rays,
-        # so the ground filter in avoid_distances does not mask useful hits.
+        dist_all = self._raw_distances[:, self._distal_mask]  # (N, num_distal)
+        # Use raw (no ground filter, no noise) distances for deterministic reward.
         valid = dist_all < (d_max - 0.001)
 
         weighted_sum = torch.zeros(self.num_envs, 2, device=self.device)
