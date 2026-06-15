@@ -700,14 +700,13 @@ class PDRiskNetActorCritic(nn.Module):
                 for k in keys_to_remove:
                     del state_dict[k]
 
-        # 兼容旧 PD-RiskNet checkpoint：proximal_gru input_size 从 64→3,
-        # distal_gru 替代了 distal_spatial_gru。旧权重无法映射到新架构，
-        # 移除感知模块的旧权重，让其随机初始化。
+        # 兼容旧 checkpoint：感知模块架构变更时跳过不兼容的权重。
+        # 检测 trigger: proximal_gru.weight_ih_l0 的 input_size 维度不匹配。
         if 'proximal_gru.weight_ih_l0' in state_dict:
             expected = self.proximal_gru.weight_ih_l0.shape
             actual = state_dict['proximal_gru.weight_ih_l0'].shape
             if expected != actual:
-                print("[PDRiskNetActorCritic] Old checkpoint detected "
+                print("[PDRiskNetActorCritic] Perception architecture changed "
                       f"(proximal_gru input_size: checkpoint={actual[1]}, model={expected[1]}). "
                       "Perception modules will be randomly initialized.")
                 prefix_blacklist = (
@@ -715,6 +714,7 @@ class PDRiskNetActorCritic(nn.Module):
                     'proximal_point_encoder.', 'distal_point_encoder.',
                     'proximal_memory_a.', 'distal_memory_a.',
                     'distal_spatial_gru.',
+                    'proximal_pointnet.', 'distal_pointnet.',
                 )
                 keys_to_remove = [k for k in state_dict
                                   if k.startswith(prefix_blacklist)]
