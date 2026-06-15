@@ -1,7 +1,9 @@
 import math
+import unittest
 
 import pytest
 import legged_gym.envs  # Pre-import to break circular dependency chain
+import torch
 
 
 def vel_avoid_reward(v_t, v_cmd, v_avoid, beta_va):
@@ -645,3 +647,123 @@ def test_trapezoid_corridor_four_direction_rot90():
         match = (hfk == expected).mean()
         assert match > 0.90, \
             f"Direction {k}: only {match*100:.1f}% pixels match rot90, expected >90%"
+
+
+# ── PerPointMLP tests ──────────────────────────────────────────
+
+class TestPerPointMLP(unittest.TestCase):
+
+    def setUp(self):
+        from rsl_rl.modules.pd_risknet_actor_critic import PerPointMLP
+        self.mlp = PerPointMLP(in_dim=3, hidden_dims=[16, 32], out_dim=64)
+        self.mlp.eval()
+
+    def test_output_shape_single_point(self):
+        """PerPointMLP maps (3,) -> (64,)."""
+        x = torch.randn(3)
+        out = self.mlp(x)
+        self.assertEqual(out.shape, (64,))
+
+    def test_output_shape_batch_of_points(self):
+        """PerPointMLP maps (B, N, 3) -> (B, N, 64)."""
+        x = torch.randn(4, 192, 3)
+        out = self.mlp(x)
+        self.assertEqual(out.shape, (4, 192, 64))
+
+    def test_output_shape_flattened(self):
+        """PerPointMLP maps (B*N, 3) -> (B*N, 64) -- the chunked call pattern."""
+        x = torch.randn(256, 3)
+        out = self.mlp(x)
+        self.assertEqual(out.shape, (256, 64))
+
+    def test_different_inputs_produce_different_outputs(self):
+        """Distinct 3D points should map to distinct features."""
+        x1 = torch.tensor([[1.0, 0.0, 0.0]])
+        x2 = torch.tensor([[0.0, 1.0, 0.0]])
+        out1 = self.mlp(x1)
+        out2 = self.mlp(x2)
+        self.assertFalse(torch.allclose(out1, out2, atol=1e-4))
+
+    def test_same_input_produces_same_output(self):
+        """Deterministic: same input -> same output (no dropout, no BN)."""
+        x = torch.randn(16, 3)
+        out1 = self.mlp(x)
+        out2 = self.mlp(x)
+        self.assertTrue(torch.allclose(out1, out2))
+
+    def test_two_instances_have_independent_weights(self):
+        """Proximal and distal PointNets must not share parameters."""
+        from rsl_rl.modules.pd_risknet_actor_critic import PerPointMLP
+        mlp1 = PerPointMLP()
+        mlp2 = PerPointMLP()
+        x = torch.randn(4, 192, 3)
+        out1 = mlp1(x)
+        out2 = mlp2(x)
+        self.assertFalse(torch.allclose(out1, out2, atol=1e-4))
+
+
+class TestPDRiskNetWithPointNet(unittest.TestCase):
+
+    def setUp(self):
+        from rsl_rl.modules.pd_risknet_actor_critic import PDRiskNetActorCritic
+        self.num_obs = 48 + 432 * 3  # proprio + 1 frame of 432 points x 3D
+        self.model = PDRiskNetActorCritic(
+            num_actor_obs=self.num_obs,
+            num_critic_obs=235,
+            num_actions=12,
+            perception_enabled=True,
+            history_length=1,
+            proximal_history_length=1,
+            distal_history_length=10,
+            num_lidar_points=432,
+            proximal_points=192,
+            distal_points=56,
+            split_theta_deg=20.0,
+            proximal_feature_dim=187,
+            distal_feature_dim=64,
+            proprio_obs_dim=48,
+            privileged_height_dim=187,
+        )
+        self.model.eval()
+
+    def test_has_pointnet_modules(self):
+        """Model should have proximal_pointnet and distal_pointnet."""
+        self.assertTrue(hasattr(self.model, 'proximal_pointnet'))
+        self.assertTrue(hasattr(self.model, 'distal_pointnet'))
+
+    def test_gru_input_size_is_64(self):
+        """GRU input_size should be 64 (PointNet output dim), not 3."""
+        self.assertEqual(self.model.proximal_gru.input_size, 64)
+        self.assertEqual(self.model.distal_gru.input_size, 64)
+
+    def test_forward_pass_does_not_crash(self):
+        """Full forward pass with single-frame observation."""
+        obs = torch.randn(2, self.num_obs)  # 2 envs
+        with torch.no_grad():
+            self.model.update_distribution(obs)
+            actions = self.model.act(obs)
+        self.assertEqual(actions.shape, (2, 12))
+
+    def test_auxiliary_loss_returns_scalar(self):
+        """Height supervision loss should return a scalar tensor."""
+        obs = torch.randn(2, self.num_obs)
+        priv = torch.randn(2, 187)
+        with torch.no_grad():
+            self.model.update_distribution(obs)
+            loss = self.model.get_auxiliary_loss(priv)
+        self.assertEqual(loss.dim(), 0)  # scalar
+
+    def test_parameter_count_reasonable(self):
+        """Total model params (actor/critic with full hidden dims + perception)."""
+        total = sum(p.numel() for p in self.model.parameters())
+        self.assertGreater(total, 2_150_000)
+        self.assertLess(total, 2_250_000)
+
+    def test_checkpoint_compat_skips_mismatched_weights(self):
+        """load_state_dict should skip perception weights when GRU input_size mismatches."""
+        old_state = self.model.state_dict()
+        # Simulate an old checkpoint with input_size=3 GRU
+        old_state['proximal_gru.weight_ih_l0'] = torch.randn(187 * 3, 3)  # (3*187, 3)
+        old_state['distal_gru.weight_ih_l0'] = torch.randn(64 * 3, 3)     # (3*64, 3)
+        # Should not raise -- compat logic should strip perception keys
+        self.model.load_state_dict(old_state, strict=False)
