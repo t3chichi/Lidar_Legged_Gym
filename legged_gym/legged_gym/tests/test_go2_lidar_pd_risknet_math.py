@@ -767,3 +767,39 @@ class TestPDRiskNetWithPointNet(unittest.TestCase):
         old_state['distal_gru.weight_ih_l0'] = torch.randn(64 * 3, 3)     # (3*64, 3)
         # Should not raise -- compat logic should strip perception keys
         self.model.load_state_dict(old_state, strict=False)
+
+
+# ── Rays smooth_dir decoupling tests ────────────────────────────
+
+class TestSmoothRaysDirDecoupled(unittest.TestCase):
+    """Verify _smooth_dir_world updates independently of _reward_rays."""
+
+    def test_method_exists(self):
+        """Go2LidarPDRiskNet should have _update_smooth_rays_dir method."""
+        from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet import Go2LidarPDRiskNet
+        self.assertTrue(hasattr(Go2LidarPDRiskNet, '_update_smooth_rays_dir'),
+                        "Go2LidarPDRiskNet should have _update_smooth_rays_dir method")
+
+    def test_reward_rays_no_ema(self):
+        """_reward_rays should NOT contain EMA logic (alpha * target_dir_world)."""
+        import inspect
+        from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet import Go2LidarPDRiskNet
+        source = inspect.getsource(Go2LidarPDRiskNet._reward_rays)
+        self.assertNotIn('alpha * target_dir_world', source,
+                         "_reward_rays should not contain EMA update logic")
+
+    def test_smooth_rays_dir_contains_ema(self):
+        """_update_smooth_rays_dir SHOULD contain the EMA logic."""
+        import inspect
+        from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet import Go2LidarPDRiskNet
+        source = inspect.getsource(Go2LidarPDRiskNet._update_smooth_rays_dir)
+        self.assertIn('alpha * target_dir_world', source,
+                      "_update_smooth_rays_dir should contain EMA update logic")
+
+    def test_callback_calls_update_smooth(self):
+        """_post_physics_step_callback should call _update_smooth_rays_dir."""
+        import inspect
+        from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet import Go2LidarPDRiskNet
+        source = inspect.getsource(Go2LidarPDRiskNet._post_physics_step_callback)
+        self.assertIn('_update_smooth_rays_dir', source,
+                      "_post_physics_step_callback should call _update_smooth_rays_dir")
