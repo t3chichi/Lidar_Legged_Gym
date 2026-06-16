@@ -56,8 +56,8 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         ray_max_distance  = 10.0
 
         rays_top_ratio = 0.4
-        rays_power = 3
-        rays_smoothing_alpha = 0.3
+        rays_power = 4
+        rays_smoothing_alpha = 0.4
 
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
@@ -73,10 +73,10 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         pillar_count = 30
         pillar_spawn_radius = 7.0
         pillar_size_x_min = 0.40
-        pillar_size_x_max = 0.60
+        pillar_size_x_max = 1.00
         pillar_size_y_min = 0.40
-        pillar_size_y_max = 0.60
-        pillar_height_min = 1.00
+        pillar_size_y_max = 1.00
+        pillar_height_min = 0.40
         pillar_height_max = 1.50
         pillar_min_separation = 2.5
         pillar_center_clear_radius = 2.0
@@ -114,14 +114,14 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-0.6, 0.6]
-            ang_vel_yaw = [-0.6, 0.6]    # 无角速度指令
+            ang_vel_yaw = [-1.0, 1.0]    # 无角速度指令
 
     class raycaster(Go2RoughCfg.raycaster):
         enable_raycast = True
         ray_pattern = "spherical"
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
-        max_distance = 50.0
+        max_distance = 10.0
         attach_yaw_only = False
         vertical_fov_deg_min = -2.0
         vertical_fov_deg_max = 57.0
@@ -131,8 +131,8 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
     class rewards(Go2RoughCfg.rewards):
         base_height_target = 0.34
         class scales(Go2RoughCfg.rewards.scales):
-            vel_avoid = 2.0
-            rays = 1.5
+            vel_avoid = 0.0
+            rays = 0.0
 
             lin_vel_z = 0 # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
             feet_stumble = 0  # 惩罚脚部绊碰（足端受到异常横向冲击）

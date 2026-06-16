@@ -112,7 +112,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         ray_pattern = "spherical"
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
-        max_distance = 50.0
+        max_distance = 10.0
         attach_yaw_only = False
         vertical_fov_deg_min = -2.0   # sensor frame 垂直 FOV 下限 (deg)
         vertical_fov_deg_max = 57.0   # sensor frame 垂直 FOV 上限 (deg)

@@ -152,7 +152,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         ray_pattern = "spherical"
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
-        max_distance = 50.0
+        max_distance = 10.0
         attach_yaw_only = False
         vertical_fov_deg_min = -2.0   # sensor frame 垂直 FOV 下限 (deg)
         vertical_fov_deg_max = 57.0   # sensor frame 垂直 FOV 上限 (deg)
@@ -179,7 +179,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
-            tracking_lin_vel = 0.2  #横向移动约束
+            tracking_lin_vel = 0.2  #横向移动约束  
             tracking_ang_vel = 0.0  
             feet_air_time = 1.0      
             gait_2_step = -5.0e-1    
