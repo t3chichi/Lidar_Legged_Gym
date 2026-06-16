@@ -114,7 +114,7 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-0.6, 0.6]
-            ang_vel_yaw = [-1.0, 1.0]    # 无角速度指令
+            ang_vel_yaw = [-1.0, 1.0]
 
     class raycaster(Go2RoughCfg.raycaster):
         enable_raycast = True
