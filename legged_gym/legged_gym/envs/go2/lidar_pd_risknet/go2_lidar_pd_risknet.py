@@ -464,17 +464,23 @@ class Go2LidarPDRiskNet(Go2):
             self.command_ranges["lin_vel_y"][0], self.command_ranges["lin_vel_y"][1],
             (len(env_ids), 1), device=self.device).squeeze(1)
 
-        # heading 围绕通道方向采样 (向量化)
-        _SPAWN_ANGLES = torch.tensor(
-            [math.pi / 2, 0.0, -math.pi / 2, math.pi],
-            device=self.device, dtype=torch.float)
-        if hasattr(self, "terrain_types"):
-            channel_angle = _SPAWN_ANGLES[self.terrain_types[env_ids].long()]
-            spread = float(getattr(self.cfg.pd_risknet, "heading_spread", 0.35))
-            self.commands[env_ids, 3] = channel_angle + torch_rand_float(
-                -spread, spread, (len(env_ids), 1), device=self.device).squeeze(1)
+        if self.cfg.commands.heading_command:
+            # heading 围绕通道方向采样 (向量化)
+            _SPAWN_ANGLES = torch.tensor(
+                [math.pi / 2, 0.0, -math.pi / 2, math.pi],
+                device=self.device, dtype=torch.float)
+            if hasattr(self, "terrain_types"):
+                channel_angle = _SPAWN_ANGLES[self.terrain_types[env_ids].long()]
+                spread = float(getattr(self.cfg.pd_risknet, "heading_spread", 0.35))
+                self.commands[env_ids, 3] = channel_angle + torch_rand_float(
+                    -spread, spread, (len(env_ids), 1), device=self.device).squeeze(1)
+            else:
+                self.commands[env_ids, 3] = 0.0
         else:
-            self.commands[env_ids, 3] = 0.0
+            self.commands[env_ids, 2] = torch_rand_float(
+                self.command_ranges["ang_vel_yaw"][0],
+                self.command_ranges["ang_vel_yaw"][1],
+                (len(env_ids), 1), device=self.device).squeeze(1)
 
         # set small commands to zero
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
