@@ -485,6 +485,7 @@ class Go2LidarPDRiskNet(Go2):
         # Reward is computed before compute_observations in LeggedRobot.post_physics_step,
         # so V_avoid must be refreshed here to avoid one-step lag.
         self._compute_v_avoid()
+        self._update_smooth_rays_dir()
 
     def check_termination(self):
         super().check_termination()
@@ -741,11 +742,26 @@ class Go2LidarPDRiskNet(Go2):
 
         return target_dir_world
 
+    def _update_smooth_rays_dir(self):
+        """Update EMA-smoothed open-space direction (called every step).
+
+        Mirrors _compute_v_avoid(): cache computation here,
+        _reward_rays() only reads the cached result.
+        """
+        cfg = self.cfg.pd_risknet
+        alpha = float(cfg.rays_smoothing_alpha)
+        target_dir_world = self._compute_rays_target_dir()  # (N, 2)
+        self._smooth_dir_world = (
+            alpha * target_dir_world + (1.0 - alpha) * self._smooth_dir_world
+        )
+        smooth_norm = torch.norm(self._smooth_dir_world, dim=1, keepdim=True).clamp(min=1e-8)
+        self._smooth_dir_world = self._smooth_dir_world / smooth_norm
+
     def _compute_rays_omega_target(self):
         """Convert smoothed open-space direction to a target yaw angular velocity.
 
         Precondition: self._smooth_dir_world must be current (updated by
-        _reward_rays' EMA step before this call).
+        _update_smooth_rays_dir every step before this call).
 
         open_dir_world (EMA smoothed) → body-frame heading_error →
         ω_target = clip(k_ω × heading_error, ±ω_max).
@@ -773,28 +789,13 @@ class Go2LidarPDRiskNet(Go2):
     def _reward_rays(self):
         """Angular-velocity tracking reward: encourages turning toward open space.
 
-        Computes ω_target from the EMA-smoothed open-space direction, then
-        rewards the robot for matching its actual yaw angular velocity to it.
+        _smooth_dir_world is updated every step by _update_smooth_rays_dir()
+        (called in _post_physics_step_callback), so we only read the cache.
 
         r = exp(-|ω_actual - ω_target|²)
         """
         cfg = self.cfg.pd_risknet
-        alpha = float(cfg.rays_smoothing_alpha)
-
-        # Step 1-3: raw target direction (world frame).
-        target_dir_world = self._compute_rays_target_dir()  # (N, 2)
-
-        # Step 4: EMA smooth in world frame.
-        self._smooth_dir_world = (
-            alpha * target_dir_world + (1.0 - alpha) * self._smooth_dir_world
-        )
-        smooth_norm = torch.norm(self._smooth_dir_world, dim=1, keepdim=True).clamp(min=1e-8)
-        self._smooth_dir_world = self._smooth_dir_world / smooth_norm
-
-        # Step 5: compute ω_target from smoothed direction.
         omega_target = self._compute_rays_omega_target()  # (N,)
-
-        # Step 6: reward matching actual yaw angular velocity to ω_target.
         omega_actual = self.base_ang_vel[:, 2]
         omega_err = omega_actual - omega_target
         sigma = float(getattr(cfg, "rays_omega_sigma", 0.25))
