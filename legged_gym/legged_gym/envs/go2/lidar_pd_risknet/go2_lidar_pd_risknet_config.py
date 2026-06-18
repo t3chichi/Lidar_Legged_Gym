@@ -52,7 +52,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         avoid_alpha = 2.0
         avoid_beta = 1.0
         avoid_sigma = 0.25    # 与 tracking_sigma 对齐
-        avoid_speed_limit = 1.0  # 避障速度上界 (m/s)
+        avoid_speed_limit = 1.2  # 避障速度上界 (m/s)
 
         # rays → ω_target 参数
         rays_omega_gain   = 0.5     # k_ω: heading_error → ω_target P 增益
@@ -121,7 +121,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
           
 
         # 梯形波弯曲通道地形配置
-        corridor_width = 3.5       # 通道宽度 (m)
+        corridor_width = 3.0       # 通道宽度 (m)
         wall_height = 1.5          # 墙壁高度 (m)
         wall_thickness = 2         # 墙壁厚度 (m)
         turn_angle_deg_max = 55.0  # 最大转弯角度 (deg), 课程从 0° 到 55°
