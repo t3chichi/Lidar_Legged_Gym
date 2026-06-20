@@ -655,26 +655,26 @@ class TestPerPointMLP(unittest.TestCase):
 
     def setUp(self):
         from rsl_rl.modules.pd_risknet_actor_critic import PerPointMLP
-        self.mlp = PerPointMLP(in_dim=3, hidden_dims=[16, 32], out_dim=64)
+        self.mlp = PerPointMLP(in_dim=3, hidden_dims=[16], out_dim=32)
         self.mlp.eval()
 
     def test_output_shape_single_point(self):
         """PerPointMLP maps (3,) -> (64,)."""
         x = torch.randn(3)
         out = self.mlp(x)
-        self.assertEqual(out.shape, (64,))
+        self.assertEqual(out.shape, (32,))
 
     def test_output_shape_batch_of_points(self):
-        """PerPointMLP maps (B, N, 3) -> (B, N, 64)."""
+        """PerPointMLP maps (B, N, 3) -> (B, N, 32)."""
         x = torch.randn(4, 192, 3)
         out = self.mlp(x)
-        self.assertEqual(out.shape, (4, 192, 64))
+        self.assertEqual(out.shape, (4, 192, 32))
 
     def test_output_shape_flattened(self):
-        """PerPointMLP maps (B*N, 3) -> (B*N, 64) -- the chunked call pattern."""
+        """PerPointMLP maps (B*N, 3) -> (B*N, 32) -- the chunked call pattern."""
         x = torch.randn(256, 3)
         out = self.mlp(x)
-        self.assertEqual(out.shape, (256, 64))
+        self.assertEqual(out.shape, (256, 32))
 
     def test_different_inputs_produce_different_outputs(self):
         """Distinct 3D points should map to distinct features."""
@@ -731,10 +731,10 @@ class TestPDRiskNetWithPointNet(unittest.TestCase):
         self.assertTrue(hasattr(self.model, 'proximal_pointnet'))
         self.assertTrue(hasattr(self.model, 'distal_pointnet'))
 
-    def test_gru_input_size_is_64(self):
-        """GRU input_size should be 64 (PointNet output dim), not 3."""
-        self.assertEqual(self.model.proximal_gru.input_size, 64)
-        self.assertEqual(self.model.distal_gru.input_size, 64)
+    def test_gru_input_size_is_32(self):
+        """GRU input_size should be 32 (PointNet output dim)."""
+        self.assertEqual(self.model.proximal_gru.input_size, 32)
+        self.assertEqual(self.model.distal_gru.input_size, 32)
 
     def test_forward_pass_does_not_crash(self):
         """Full forward pass with single-frame observation."""
@@ -756,8 +756,8 @@ class TestPDRiskNetWithPointNet(unittest.TestCase):
     def test_parameter_count_reasonable(self):
         """Total model params (actor/critic with full hidden dims + perception)."""
         total = sum(p.numel() for p in self.model.parameters())
-        self.assertGreater(total, 2_150_000)
-        self.assertLess(total, 2_250_000)
+        self.assertGreater(total, 2_123_306)
+        self.assertLess(total, 2_223_306)
 
     def test_checkpoint_compat_skips_mismatched_weights(self):
         """load_state_dict should skip perception weights when GRU input_size mismatches."""
