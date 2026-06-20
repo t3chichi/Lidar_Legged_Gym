@@ -2,7 +2,7 @@ from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPP
 
 
 OBS_HISTORY_LENGTH = 1
-PROX_HISTORY_LENGTH = 10
+PROX_HISTORY_LENGTH = 1  #死代码,实际使用帧数为1
 DIST_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 40
 PD_SPHERICAL_ELEVATION = 25
