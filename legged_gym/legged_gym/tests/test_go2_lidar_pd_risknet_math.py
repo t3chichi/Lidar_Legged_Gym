@@ -659,7 +659,7 @@ class TestPerPointMLP(unittest.TestCase):
         self.mlp.eval()
 
     def test_output_shape_single_point(self):
-        """PerPointMLP maps (3,) -> (64,)."""
+        """PerPointMLP maps (3,) -> (32,)."""
         x = torch.randn(3)
         out = self.mlp(x)
         self.assertEqual(out.shape, (32,))
