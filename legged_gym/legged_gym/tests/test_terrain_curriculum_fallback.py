@@ -163,23 +163,15 @@ class TestTerrainCurriculumFallback:
         state = make_state(env_ids, terrain_levels, upgrade_counts,
                           downgrade_counts, root_xy, env_origins_xy, channel_forward)
 
-        # Run multiple times to verify fallback happens
-        fallback_occurred = False
-        for _ in range(20):
-            new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
-            if (new_levels < max_level - 1).any():
-                fallback_occurred = True
-                # Upgrade count should be reset
-                assert (new_up == 0).all()
-                # All levels should be in valid range
-                assert (new_levels >= 0).all() and (new_levels < max_level).all()
-                break
-            # Update state for next iteration
-            state["terrain_levels"] = new_levels
-            state["_consecutive_upgrade_count"] = new_up
-            state["_consecutive_downgrade_count"] = new_down
-
-        assert fallback_occurred, "Fallback should have occurred within 20 attempts"
+        # Fallback is guaranteed on first call (upgrade_count >= cons_up at max level)
+        new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
+        # Should have fallen back below max level
+        assert (new_levels < max_level - 1).all(), \
+            f"Expected levels below max, got {new_levels}"
+        # Upgrade count should be reset
+        assert (new_up == 0).all()
+        # All levels should be in valid range
+        assert (new_levels >= 0).all() and (new_levels < max_level).all()
 
     def test_fallback_excludes_max_level(self):
         """Fallback should never put robot at max level (max_level - 1 is excluded)."""
@@ -196,13 +188,11 @@ class TestTerrainCurriculumFallback:
         state = make_state(env_ids, terrain_levels, upgrade_counts,
                           downgrade_counts, root_xy, env_origins_xy, channel_forward)
 
-        for _ in range(100):
-            new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
-            assert (new_levels < max_level - 1).all() or (new_levels == max_level - 1).all(), \
-                f"Level should never be >= max_level, got {new_levels}"
-            state["terrain_levels"] = new_levels
-            state["_consecutive_upgrade_count"] = new_up
-            state["_consecutive_downgrade_count"] = new_down
+        # Fallback is guaranteed on first call (upgrade_count >= cons_up at max level)
+        new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
+        # Fallback should put robot BELOW max level (not at max_level - 1)
+        assert (new_levels < max_level - 1).all(), \
+            f"Fallback must put robot below max level, got {new_levels}"
 
     def test_fallback_resets_upgrade_count(self):
         """After fallback, consecutive upgrade count must be zero."""
@@ -218,18 +208,14 @@ class TestTerrainCurriculumFallback:
         state = make_state(env_ids, terrain_levels, upgrade_counts,
                           downgrade_counts, root_xy, env_origins_xy, channel_forward)
 
-        for _ in range(30):
-            new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
-            # If fallback occurred, upgrade count must be zero
-            if (new_levels < 4).item():
-                assert new_up.item() == 0, \
-                    f"Upgrade count should be 0 after fallback, got {new_up.item()}"
-                return
-            state["terrain_levels"] = new_levels
-            state["_consecutive_upgrade_count"] = new_up
-            state["_consecutive_downgrade_count"] = new_down
-
-        pytest.fail("Fallback never triggered within 30 iterations")
+        # Fallback is guaranteed on first call (upgrade_count >= cons_up at max level)
+        new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
+        # Should have fallen back below max level
+        assert new_levels.item() < 4, \
+            f"Expected level < 4 after fallback, got {new_levels.item()}"
+        # Upgrade count should be reset
+        assert new_up.item() == 0, \
+            f"Upgrade count should be 0 after fallback, got {new_up.item()}"
 
     def test_insufficient_upgrades_no_fallback(self):
         """Robot at max level with insufficient consecutive successes stays."""
