@@ -26,7 +26,8 @@ PD_PRIV_CRITIC_DIM = PD_PROPRIO_DIM + PD_PRIV_HEIGHT_DIM
 
 class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class asset(Go2RoughCfg.asset):
-        terminate_after_contacts_on = []
+        terminate_after_contacts_on = ["base", "Head_upper", "Head_lower"]
+        penalize_contacts_on = ["thigh", "calf", "Head_upper", "Head_lower", "base"]
 
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
@@ -87,6 +88,13 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         move_down_ratio = 0.5                 # 降级阈值：forward_dist / goal_dist < 此比例
         consecutive_upgrade_episodes = 5      # 连续 N 回合到达终点才触发升级
         consecutive_downgrade_episodes = 2    # 连续 N 回合未达降级阈值才触发降级
+
+    class replay:
+        enable_collision_replay = True
+        replay_prob = 0.8
+        early_reset_prob_range = [0.1, 0.5]
+        undo_steps_range = [100, 150]
+        max_collision_points = 10
 
     class env(Go2RoughCfg.env):
         # Base Go2 proprio obs + raw LiDAR history points (N_hist * N_points * xyz).
@@ -194,6 +202,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
             curvature = -0.0  # 曲率惩罚：抑制 ω_z²/(v_xy²+σ²)，防止原地转圈
             channel_forward = 10.0  # 沿通道方向前进/后退奖励
+            termination = -10.0
 
 
     class normalization(Go2RoughCfg.normalization):
