@@ -800,25 +800,57 @@ class Go2LidarPDRiskNet(Go2):
         self.last_dof_vel[replay_ids] = 0.
 
     def reset_idx(self, env_ids):
-        super().reset_idx(env_ids)
         if len(env_ids) == 0:
             return
-        # self.lidar_history[env_ids] = 0.0
-        self.lidar_points_base[env_ids] = 0.0
-        self.raycast_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
-        self._raw_distances[env_ids] = float(self.cfg.pd_risknet.ray_max_distance)
-        self.v_avoid[env_ids] = 0.0
-        self.last_dist[env_ids] = torch.norm(
-            self.base_pos[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
-        self._last_channel_pos[env_ids] = torch.sum(
-            self.base_pos[env_ids, :2] * self._channel_forward[env_ids], dim=1)
-        if hasattr(self, 'last_last_actions'):
-            self.last_last_actions[env_ids] = 0.
-        self._update_lidar_history()
-        # Initialize rays smoothed direction to first target direction.
-        # Must happen after _update_lidar_history() so LiDAR data is fresh.
-        target_dir_world = self._compute_rays_target_dir()  # (N, 2)
-        self._smooth_dir_world[env_ids] = target_dir_world[env_ids]
+
+        enable_replay = getattr(self.cfg.replay, 'enable_collision_replay', False)
+
+        # ── 依赖 time_out_buf（check_termination 中设置）──
+        time_out = self.time_out_buf if hasattr(self, 'time_out_buf') \
+            else torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+
+        if enable_replay:
+            is_collision = self.collision_occurred[env_ids]
+            prob = getattr(self.cfg.replay, 'replay_prob', 0.8)
+            wants_replay = (
+                (torch.rand(len(env_ids), device=self.device) < prob)
+                & is_collision
+                & (~time_out[env_ids])
+            )
+
+            replay_ids = env_ids[wants_replay]
+            normal_ids = env_ids[~wants_replay]
+
+            if len(replay_ids) > 0:
+                self._reset_collision_replay(replay_ids)
+            if len(normal_ids) > 0:
+                super().reset_idx(normal_ids)
+        else:
+            super().reset_idx(env_ids)
+            normal_ids = env_ids
+            replay_ids = torch.tensor([], device=self.device, dtype=torch.long)
+
+        # ── LiDAR 专用重置：仅对非回放 env ──
+        non_replay_ids = normal_ids if enable_replay else env_ids
+        if len(non_replay_ids) > 0:
+            self.lidar_points_base[non_replay_ids] = 0.0
+            self.raycast_distances[non_replay_ids] = float(self.cfg.pd_risknet.ray_max_distance)
+            self._raw_distances[non_replay_ids] = float(self.cfg.pd_risknet.ray_max_distance)
+            self.v_avoid[non_replay_ids] = 0.0
+            self.last_dist[non_replay_ids] = torch.norm(
+                self.base_pos[non_replay_ids, :2] - self.env_origins[non_replay_ids, :2], dim=1)
+            self._last_channel_pos[non_replay_ids] = torch.sum(
+                self.base_pos[non_replay_ids, :2] * self._channel_forward[non_replay_ids], dim=1)
+            if hasattr(self, 'last_last_actions'):
+                self.last_last_actions[non_replay_ids] = 0.
+            self._update_lidar_history()
+            target_dir_world = self._compute_rays_target_dir()
+            self._smooth_dir_world[non_replay_ids] = target_dir_world[non_replay_ids]
+
+        # ── 公共清理：所有 env ──
+        self.collision_occurred[env_ids] = False
+        self.last_collision_active[env_ids] = False
+        self.is_replay[env_ids] = False
 
     def _reward_vel_avoid(self):
         cfg = self.cfg.pd_risknet
