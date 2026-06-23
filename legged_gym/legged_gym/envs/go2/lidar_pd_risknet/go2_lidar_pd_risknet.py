@@ -51,6 +51,10 @@ class Go2LidarPDRiskNet(Go2):
             self.num_envs, device=self.device, dtype=torch.bool)
         self.is_replay = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.bool)
+        self.pos_hist = torch.zeros(
+            self.num_envs, 10, 2, device=self.device)
+        self.stay_timer = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.int)
 
     def _update_replay_buffer(self):
         """每步滚动更新回放缓冲区。新 episode 前两步用广播填充避免读到脏数据。"""
@@ -519,6 +523,12 @@ class Go2LidarPDRiskNet(Go2):
         # so V_avoid must be refreshed here to avoid one-step lag.
         self._compute_v_avoid()
         self._update_smooth_rays_dir()
+        # 每 10 步更新位置历史（~2 秒窗口）
+        update_ids = (self.episode_length_buf % 10 == 0).nonzero(as_tuple=False).flatten()
+        if len(update_ids) > 0:
+            self.pos_hist[update_ids] = torch.cat([
+                self.pos_hist[update_ids, 1:],
+                self.root_states[update_ids, :2].unsqueeze(1)], dim=1)
 
     def check_termination(self):
         """终止检测 + 碰撞追踪 + early_reset 概率触发。"""
@@ -584,6 +594,18 @@ class Go2LidarPDRiskNet(Go2):
 
             self.collision_occurred |= new_collisions
             self.last_collision_active = new_collisions
+
+        # ── 卡住检测：瞬时静止 or 长期无位移 ──
+        v_low = (torch.norm(self.base_lin_vel[:, :2], dim=-1) < 0.1) & \
+                (torch.abs(self.base_ang_vel[:, 2]) < 0.1)
+        d_low = torch.norm(
+            self.root_states[:, :2] - self.pos_hist[:, 0, :2], dim=-1) < 0.2
+        not_just_reset = (self.episode_length_buf.float() /
+                          self.max_episode_length) > 0.1
+        self.static = (v_low | d_low) & not_just_reset
+        self.stay_timer += self.static.int()
+        stand_still_flag = self.stay_timer >= 150
+        self.reset_buf |= stand_still_flag
 
     def _reward_termination(self):
         """终止惩罚：仅对 terminate_buf==True 的环境施加（硬碰撞、early_reset、跌倒）。"""
@@ -857,6 +879,8 @@ class Go2LidarPDRiskNet(Go2):
         self.collision_occurred[env_ids] = False
         self.last_collision_active[env_ids] = False
         self.is_replay[env_ids] = False
+        self.stay_timer[env_ids] = 0
+        self.pos_hist[env_ids, :, :] = 0.
 
     def _reward_vel_avoid(self):
         cfg = self.cfg.pd_risknet
