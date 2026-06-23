@@ -32,7 +32,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
         rot_randomization_range = [-0.2, 0.2]   # 相对切线方向的偏航随机范围 (rad)
-        spawn_offset_range = 0.5                 # 出生点 XY 随机偏移范围 (m)
+        spawn_offset_range = 0.4                 # 出生点 XY 随机偏移范围 (m)
 
     class pd_risknet:
         enabled = True
@@ -87,7 +87,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         # 地形课程升降级
         move_down_ratio = 0.5                 # 降级阈值：forward_dist / goal_dist < 此比例
         consecutive_upgrade_episodes = 5      # 连续 N 回合到达终点才触发升级
-        consecutive_downgrade_episodes = 2    # 连续 N 回合未达降级阈值才触发降级
+        consecutive_downgrade_episodes = 3    # 连续 N 回合未达降级阈值才触发降级
 
     class replay:
         enable_collision_replay = True
@@ -129,7 +129,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
           
 
         # 梯形波弯曲通道地形配置
-        corridor_width = 3.0       # 通道宽度 (m)
+        corridor_width = 2.4       # 通道宽度 (m)
         wall_height = 1.5          # 墙壁高度 (m)
         wall_thickness = 2         # 墙壁厚度 (m)
         turn_angle_deg_max = 55.0  # 最大转弯角度 (deg), 课程从 0° 到 55°
@@ -186,17 +186,22 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate = -5.0e-3  # 一阶动作平滑惩罚：限制相邻时刻动作变化
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
+            #flat_reward
             tracking_lin_vel = 0.0  #横向移动约束  
             tracking_ang_vel = 0.0  
-            feet_air_time = 1.0      
-            gait_2_step = -5.0e-1    
-            ang_vel_xy = -5.0e-2
-            base_height = -2.0
-            orientation = -2.0
-
-            #override
-            # lin_vel_z = -1.0e-3
-            collision = -2.0e-2
+            lin_vel_z = -2.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
+            ang_vel_xy = -0.1  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
+            orientation = -5.0  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
+            torques = -0.000025  # 关节力矩惩罚：减少能耗并限制电机过载
+            # dof_vel = -0.  # 关节速度惩罚：抑制关节速度过大，避免剧烈或不稳定动作
+            dof_acc = -2.5e-7  # 关节加速度惩罚：提升动作平滑性，减少瞬时加速度带来的冲击
+            base_height = -5.0  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
+            feet_air_time = 1.0  # 足端离地时间权重：影响步态周期与接触模式，鼓励合理的离地时间
+            # collision = -1.  # 碰撞惩罚：对机体或连杆发生非期望碰撞时给予负奖励
+            # feet_stumble = -0.0  # 足端绊碰惩罚：惩罚脚部异常冲击或失稳事件
+            action_rate = -0.01  # 动作变化率惩罚：限制相邻动作变化，平滑控制信号
+            stand_still = -0.  # 静止惩罚：惩罚长时间静止，防止策略不移动以“获利”
+            gait_2_step = -1.0
 
             goal = 20.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
