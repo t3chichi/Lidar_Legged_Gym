@@ -575,7 +575,7 @@ class Go2LidarPDRiskNet(Go2):
             # early_reset 概率随地形难度线性增长
             prob_range = getattr(self.cfg.replay, 'early_reset_prob_range', [0.1, 0.5])
             early_prob = prob_range[0] + (prob_range[1] - prob_range[0]) * \
-                (self.terrain_levels.float() / max(1, self.max_terrain_level)).clamp(max=1.0)
+                (self.terrain_levels.float() / max(1, self.max_terrain_level - 1)).clamp(max=1.0)
             trigger_early = is_new_collision & \
                 (torch.rand(self.num_envs, device=self.device) < early_prob)
 
@@ -773,6 +773,12 @@ class Go2LidarPDRiskNet(Go2):
             self.raycast_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             self._raw_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             self.v_avoid[fallback_ids] = 0.0
+            self.last_dist[fallback_ids] = torch.norm(
+                self.base_pos[fallback_ids, :2] - self.env_origins[fallback_ids, :2], dim=1)
+            self._last_channel_pos[fallback_ids] = torch.sum(
+                self.base_pos[fallback_ids, :2] * self._channel_forward[fallback_ids], dim=1)
+            if hasattr(self, 'last_last_actions'):
+                self.last_last_actions[fallback_ids] = 0.
             self._update_lidar_history()
             target_dir_world = self._compute_rays_target_dir()
             self._smooth_dir_world[fallback_ids] = target_dir_world[fallback_ids]
