@@ -585,6 +585,12 @@ class Go2LidarPDRiskNet(Go2):
             self.collision_occurred |= new_collisions
             self.last_collision_active = new_collisions
 
+    def _reward_termination(self):
+        """终止惩罚：仅对 terminate_buf==True 的环境施加（硬碰撞、early_reset、跌倒）。"""
+        if hasattr(self, 'terminate_buf'):
+            return self.terminate_buf.float()
+        return self.reset_buf * ~self.time_out_buf
+
     def _reward_goal(self):
         pd_cfg = self.cfg.pd_risknet
         if self._goal_offsets_table is None or not getattr(pd_cfg, "goal_enabled", False):
@@ -923,12 +929,12 @@ class Go2LidarPDRiskNet(Go2):
         if getattr(self.cfg.pd_risknet, "collision_3d", False):
             # 原版 legged_gym: 全向 3D 二值检测
             return torch.sum(
-                (torch.norm(self.contact_forces[:, self.collision_body_indices, :], dim=-1) > 0.1).float(),
+                (torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1).float(),
                 dim=1)
         # 论文公式：水平 2D 连续平方
         forces_xy = torch.stack([
             torch.norm(self.contact_forces[:, idx, :2], dim=1)
-            for idx in self.collision_body_indices
+            for idx in self.penalised_contact_indices
         ], dim=1)
         return torch.sum(torch.square(forces_xy), dim=1)
 
