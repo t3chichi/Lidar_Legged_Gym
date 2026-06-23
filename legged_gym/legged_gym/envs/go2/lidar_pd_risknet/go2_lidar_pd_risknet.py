@@ -52,6 +52,24 @@ class Go2LidarPDRiskNet(Go2):
         self.is_replay = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.bool)
 
+    def _update_replay_buffer(self):
+        """每步滚动更新回放缓冲区。新 episode 前两步用广播填充避免读到脏数据。"""
+        self.replay_root_states = torch.where(
+            (self.episode_length_buf <= 1)[:, None, None],
+            self.root_states.unsqueeze(1).expand(-1, self.replay_len, -1),
+            torch.cat([self.replay_root_states[:, 1:],
+                       self.root_states.unsqueeze(1)], dim=1))
+        self.replay_dof_pos = torch.where(
+            (self.episode_length_buf <= 1)[:, None, None],
+            self.dof_pos.unsqueeze(1).expand(-1, self.replay_len, -1),
+            torch.cat([self.replay_dof_pos[:, 1:],
+                       self.dof_pos.unsqueeze(1)], dim=1))
+        self.replay_dof_vel = torch.where(
+            (self.episode_length_buf <= 1)[:, None, None],
+            self.dof_vel.unsqueeze(1).expand(-1, self.replay_len, -1),
+            torch.cat([self.replay_dof_vel[:, 1:],
+                       self.dof_vel.unsqueeze(1)], dim=1))
+
     def _get_env_origins(self):
         pd_cfg = self.cfg.pd_risknet
         if getattr(pd_cfg, "soft_pretrain", False):
@@ -495,6 +513,7 @@ class Go2LidarPDRiskNet(Go2):
 
     def _post_physics_step_callback(self):
         super()._post_physics_step_callback()
+        self._update_replay_buffer()
         self._update_lidar_history()
         # Reward is computed before compute_observations in LeggedRobot.post_physics_step,
         # so V_avoid must be refreshed here to avoid one-step lag.
