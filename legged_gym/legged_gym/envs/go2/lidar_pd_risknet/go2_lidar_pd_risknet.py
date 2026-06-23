@@ -752,6 +752,53 @@ class Go2LidarPDRiskNet(Go2):
             self.command_ranges["lin_vel_x"][1] = np.clip(
                 self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
 
+    def _reset_collision_replay(self, env_ids):
+        """从滚动缓冲区回退机器人状态，模拟"重新尝试"当前场景。"""
+        undo_range = getattr(self.cfg.replay, 'undo_steps_range', [100, 150])
+        undo_steps = torch.randint(
+            undo_range[0], undo_range[1], (len(env_ids),), device=self.device)
+
+        current_len = self.episode_length_buf[env_ids]
+        undo_steps = torch.min(undo_steps.long(), current_len.long())
+        undo_steps = torch.clamp(undo_steps, max=self.replay_len - 1)
+
+        valid_replay = undo_steps > 20
+        replay_ids = env_ids[valid_replay]
+        fallback_ids = env_ids[~valid_replay]
+
+        # 历史不够 → 走完整正常重置链
+        if len(fallback_ids) > 0:
+            super().reset_idx(fallback_ids)
+            self.lidar_points_base[fallback_ids] = 0.0
+            self.raycast_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
+            self._raw_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
+            self.v_avoid[fallback_ids] = 0.0
+            self._update_lidar_history()
+            target_dir_world = self._compute_rays_target_dir()
+            self._smooth_dir_world[fallback_ids] = target_dir_world[fallback_ids]
+
+        if len(replay_ids) == 0:
+            return
+
+        self.is_replay[replay_ids] = True
+        indices = -undo_steps[valid_replay]
+
+        self.root_states[replay_ids] = self.replay_root_states[replay_ids, indices]
+        self.dof_pos[replay_ids] = self.replay_dof_pos[replay_ids, indices]
+        self.dof_vel[replay_ids] = self.replay_dof_vel[replay_ids, indices]
+
+        env_ids_int32 = replay_ids.to(dtype=torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim, gymtorch.unwrap_tensor(self.root_states),
+            gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        self.gym.set_dof_state_tensor_indexed(
+            self.sim, gymtorch.unwrap_tensor(self.dof_state),
+            gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+        self.episode_length_buf[replay_ids] -= undo_steps[valid_replay]
+        self.last_actions[replay_ids] = 0.
+        self.last_dof_vel[replay_ids] = 0.
+
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
         if len(env_ids) == 0:
