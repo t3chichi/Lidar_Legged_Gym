@@ -27,22 +27,30 @@ class Go2LidarPDRiskNet(Go2):
         super()._init_buffers()
         # Enable per-step debug drawing for this task when viewer is available.
         self.debug_viz = True
-        # Body indices for obstacle collision penalty.
-        self.collision_body_indices = [
-            self.gym.find_actor_rigid_body_handle(
-                self.envs[0], self.actor_handles[0], name)
-            for name in (
-                "base", "Head_upper",
-                "FL_thigh", "FR_thigh", "RL_thigh", "RR_thigh",
-                "FL_calf",  "FR_calf",  "RL_calf",  "RR_calf",
-            )
-        ]
         self._init_pd_risknet_buffers()
         self._init_lidar_sensor()
         if self.lidar_sensor is not None:
             self._init_lidar_aux()
+        self._init_replay_buffers()
         if not hasattr(self, '_spawn_angles'):
             self._spawn_angles = None
+
+    def _init_replay_buffers(self):
+        """滚动状态缓冲区 + 碰撞标志，供碰撞回放机制使用。"""
+        self.replay_len = 100
+        self.replay_root_states = torch.zeros(
+            self.num_envs, self.replay_len, 13, device=self.device)
+        self.replay_dof_pos = torch.zeros(
+            self.num_envs, self.replay_len, self.num_dof, device=self.device)
+        self.replay_dof_vel = torch.zeros(
+            self.num_envs, self.replay_len, self.num_dof, device=self.device)
+
+        self.collision_occurred = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool)
+        self.last_collision_active = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool)
+        self.is_replay = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool)
 
     def _get_env_origins(self):
         pd_cfg = self.cfg.pd_risknet
