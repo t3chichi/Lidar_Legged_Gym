@@ -521,16 +521,32 @@ class Go2LidarPDRiskNet(Go2):
         self._update_smooth_rays_dir()
 
     def check_termination(self):
-        super().check_termination()
-        # 翻转/跌落终止
+        """终止检测 + 碰撞追踪 + early_reset 概率触发。"""
+        # ── 初始化标志 ──
+        self.initial_ = self.episode_length_buf <= 1
+        self.extras["bad_masks"] = self.initial_
+
+        # ── 硬碰撞 + timeout（check_termination 基类逻辑内联）──
+        # 使用 :2（水平面力），与 SEA-Nav 一致
+        hard_collision = torch.any(
+            torch.norm(self.contact_forces[:, self.termination_contact_indices, :2],
+                       dim=-1) > 1.0, dim=1)
+        hard_collision &= (~self.initial_)
+        self.terminate_buf = hard_collision
+        self.reset_buf = hard_collision.clone()
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length
+        self.reset_buf |= self.time_out_buf
+
+        # ── 翻转/跌落终止（保持原有逻辑）──
         if getattr(self.cfg.env, "enable_fall_termination", False):
             g_thresh = float(getattr(self.cfg.env, "fall_projected_gravity_z_threshold", -0.1))
             h_thresh = float(getattr(self.cfg.env, "fall_base_height_threshold", 0.12))
             flipped = self.projected_gravity[:, 2] > g_thresh
             low_base = self.base_pos[:, 2] < h_thresh
             self.reset_buf |= (flipped | low_base)
+            self.terminate_buf |= (flipped | low_base)
 
-        # 通道终点到达检测
+        # ── 通道终点到达检测（保持原有逻辑）──
         pd_cfg = self.cfg.pd_risknet
         if self._goal_offsets_table is not None and getattr(pd_cfg, "goal_enabled", False):
             off = self._goal_offsets_table[self.terrain_levels, self.terrain_types]
@@ -543,6 +559,31 @@ class Go2LidarPDRiskNet(Go2):
             )
             reached = dist < gr
             self.reset_buf |= reached
+
+        # ── 碰撞回放：碰撞追踪 + early_reset ──
+        enable_replay = getattr(self.cfg.replay, 'enable_collision_replay', False)
+        if enable_replay:
+            # 检测新碰撞：penalised_contact_indices 中任意部位水平力 > 1.0
+            new_collisions = torch.any(
+                torch.norm(self.contact_forces[:, self.penalised_contact_indices, :2],
+                           dim=-1) > 1.0, dim=1)
+            new_collisions &= (~self.initial_)
+
+            # 只取碰撞首帧
+            is_new_collision = new_collisions & (~self.last_collision_active)
+
+            # early_reset 概率随地形难度线性增长
+            prob_range = getattr(self.cfg.replay, 'early_reset_prob_range', [0.1, 0.5])
+            early_prob = prob_range[0] + (prob_range[1] - prob_range[0]) * \
+                (self.terrain_levels.float() / max(1, self.max_terrain_level)).clamp(max=1.0)
+            trigger_early = is_new_collision & \
+                (torch.rand(self.num_envs, device=self.device) < early_prob)
+
+            self.reset_buf |= trigger_early
+            self.terminate_buf |= trigger_early
+
+            self.collision_occurred |= new_collisions
+            self.last_collision_active = new_collisions
 
     def _reward_goal(self):
         pd_cfg = self.cfg.pd_risknet
