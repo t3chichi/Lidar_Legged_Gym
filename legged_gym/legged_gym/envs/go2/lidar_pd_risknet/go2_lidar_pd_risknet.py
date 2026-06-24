@@ -725,12 +725,13 @@ class Go2LidarPDRiskNet(Go2):
                 torch.zeros_like(self._consecutive_downgrade_count[env_ids]),
                 self._consecutive_downgrade_count[env_ids])
 
+            old_level = self.terrain_levels[env_ids].clone()
             self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
 
-            # 防遗忘回退：最高级连续成功 N 次后，随机回退到低级
+            # 防遗忘回退：在最高级完成 episode 后，随机回退到低级
             if self.max_terrain_level > 1:
-                at_max = self.terrain_levels[env_ids] >= self.max_terrain_level - 1
-                fallback = at_max & (self._consecutive_upgrade_count[env_ids] >= cons_up)
+                was_at_max = old_level >= self.max_terrain_level - 1
+                fallback = was_at_max & move_up
                 self.terrain_levels[env_ids] = torch.where(
                     fallback,
                     torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level - 1),
