@@ -92,12 +92,13 @@ def simulate_curriculum_step(env_ids, state):
     downgrade_count = torch.where(
         move_up, torch.zeros_like(downgrade_count), downgrade_count)
 
+    old_level = terrain_levels.clone()
     terrain_levels += 1 * move_up - 1 * move_down
 
-    # === NEW: fallback logic (with guard for max_terrain_level > 1) ===
+    # === fallback: only if ALREADY at max before this episode ===
     if max_level > 1:
-        at_max = terrain_levels >= max_level - 1
-        fallback = at_max & (upgrade_count >= cons_up)
+        was_at_max = old_level >= max_level - 1
+        fallback = was_at_max & move_up
         terrain_levels = torch.where(
             fallback,
             torch.randint_like(terrain_levels, max_level - 1),
@@ -237,6 +238,36 @@ class TestTerrainCurriculumFallback:
         assert 0 <= new_levels.item() < 5
         # Upgrade count should be 4 (was 3, succeeded once)
         assert new_up.item() == 4
+
+    def test_upgrade_to_max_no_fallback(self):
+        """Robot upgrading INTO max level must NOT trigger fallback immediately.
+
+        Bug fix: previously at_max checked the post-upgrade level, so a robot
+        moving 3→4 would trigger fallback without ever running at level 4.
+        Now was_at_max checks the pre-upgrade level, so the robot gets to
+        experience level 4 before fallback can fire.
+        """
+        n = 4
+        env_ids = torch.arange(n)
+        # At level 3, 5 consecutive successes → should upgrade to 4 cleanly
+        terrain_levels = torch.full((n,), 3, dtype=torch.long)
+        upgrade_counts = torch.full((n,), 5, dtype=torch.long)
+        downgrade_counts = torch.zeros(n, dtype=torch.long)
+        root_xy = torch.tensor([[0.0, 14.0], [0.0, 14.0], [0.0, 14.0], [0.0, 14.0]])
+        env_origins_xy = torch.zeros(n, 2)
+        channel_forward = torch.tensor([[0.0, 1.0]] * n)
+
+        state = make_state(env_ids, terrain_levels, upgrade_counts,
+                          downgrade_counts, root_xy, env_origins_xy, channel_forward)
+
+        new_levels, new_up, new_down = simulate_curriculum_step(env_ids, state)
+
+        # Must upgrade to level 4, NOT fallback
+        assert (new_levels == 4).all(), \
+            f"Robot should upgrade to level 4, got {new_levels}"
+        # Upgrade count reset after upgrade
+        assert (new_up == 0).all(), \
+            f"Expected upgrade count 0 after upgrade, got {new_up}"
 
     def test_max_terrain_level_one_does_not_crash(self):
         """When max_terrain_level == 1, fallback should be skipped gracefully."""
