@@ -23,9 +23,6 @@ from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet_config import (
 )
 
 
-HEADING_OBS_ENABLED = False
-
-
 class Go2CmdSafeCfg(Go2RoughCfg):
     """Command-safe velocity reward config.
 
@@ -50,15 +47,11 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = PD_THETA_DEG
-        heading_obs_enabled = HEADING_OBS_ENABLED
-        heading_noise_enabled = True
-        heading_noise_std = 0.05
         n_sectors = 36
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
         ray_max_distance = 10.0
-        heading_spread = 0.35
         goal_enabled = True
         goal_reward = 20.0
         move_down_ratio = 0.5
@@ -175,8 +168,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             stand_still     = 0.0
 
     class normalization(Go2RoughCfg.normalization):
-        class obs_scales(Go2RoughCfg.normalization.obs_scales):
-            heading = 1.0
+        pass
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
