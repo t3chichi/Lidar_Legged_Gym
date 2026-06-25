@@ -101,7 +101,21 @@ class OnPolicyRunner:
         # Setup observations and training type
         num_obs, num_privileged_obs = self._setup_observations()
 
-        # Initialize policy
+        # Determine if HistoryWrapper is needed (pre-compute wrapped dim)
+        self.history_wrapper = None
+        raw_num_obs = num_obs
+        if self.use_old_interface and hasattr(self.env, 'cfg'):
+            env_cfg = self.env.cfg
+            if hasattr(env_cfg, 'pd_risknet') and getattr(env_cfg.pd_risknet, 'enabled', False):
+                ppo_policy_cfg = self.policy_cfg
+                proximal_points = int(ppo_policy_cfg.get("proximal_points", 256))
+                distal_history_length = int(ppo_policy_cfg.get("distal_history_length", 10))
+                distal_points = int(ppo_policy_cfg.get("distal_points", 128))
+                proprio_dim = int(ppo_policy_cfg.get("proprio_obs_dim", 48))
+                wrapped_num_obs = proprio_dim + proximal_points * 3 + distal_history_length * distal_points * 3
+                num_obs = wrapped_num_obs
+
+        # Initialize policy (with potentially wrapped dim)
         policy = self._initialize_policy(num_obs, num_privileged_obs)
 
         # Setup RND if configured
@@ -129,6 +143,29 @@ class OnPolicyRunner:
         # Initialize environment if using old interface
         if self.use_old_interface:
             self._initialize_old_interface()
+
+        # Create HistoryWrapper if needed
+        if num_obs > raw_num_obs:
+            # num_obs was overridden → wrapper is needed
+            from legged_gym.utils.cmd_safe_history_wrapper import CmdSafeHistoryWrapper
+            env_cfg = self.env.cfg
+            pd_cfg = env_cfg.pd_risknet
+            ppo_policy_cfg = self.policy_cfg
+            proximal_points = int(ppo_policy_cfg.get("proximal_points", 256))
+            distal_history_length = int(ppo_policy_cfg.get("distal_history_length", 10))
+            distal_points = int(ppo_policy_cfg.get("distal_points", 128))
+            proprio_dim = int(ppo_policy_cfg.get("proprio_obs_dim", 48))
+            self.history_wrapper = CmdSafeHistoryWrapper(
+                num_envs=self.env.num_envs,
+                num_lidar_points=int(pd_cfg.num_lidar_points),
+                distal_history_length=distal_history_length,
+                proximal_points=proximal_points,
+                distal_points=distal_points,
+                phi_threshold_deg=float(pd_cfg.split_theta_deg),
+                proprio_dim=proprio_dim,
+                device=self.device,
+            )
+            print(f"[OnPolicyRunner] CmdSafeHistoryWrapper enabled, wrapped_obs_dim={self.history_wrapper.wrapped_obs_dim}")
 
         if self.training_type == "distillation":
             teacher_model_path = self.cfg.get("teacher_model_path", None)
@@ -364,6 +401,9 @@ class OnPolicyRunner:
         # Get initial observations
         obs, privileged_obs = self._get_observations()
         obs, privileged_obs = obs.to(self.device), privileged_obs.to(self.device)
+        if self.history_wrapper is not None:
+            init_dones = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.device)
+            obs = self.history_wrapper.wrap_obs(obs, self.env.lidar_points_base, init_dones)
         self.train_mode()
 
         # Training loop setup
@@ -422,6 +462,10 @@ class OnPolicyRunner:
                     # Move to device
                     obs, rewards, dones = obs.to(self.device), rewards.to(self.device), dones.to(self.device)
                     privileged_obs = privileged_obs.to(self.device)
+
+                    # Apply HistoryWrapper (before normalization)
+                    if self.history_wrapper is not None:
+                        obs = self.history_wrapper.wrap_obs(obs, self.env.lidar_points_base, dones)
 
                     # Apply normalization
                     obs = self.obs_normalizer(obs)
