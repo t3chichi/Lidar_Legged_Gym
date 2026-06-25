@@ -52,6 +52,86 @@ class Go2CmdSafe(Go2):
         self.stay_timer = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.int)
 
+    def _init_cmd_safe_buffers(self):
+        cd_cfg = self.cfg.cmd_safe
+        n_sec = int(self.cfg.pd_risknet.n_sectors)
+
+        # ── Precompute body radius per sector (ellipse) ──
+        a = float(cd_cfg.body_semi_length)
+        b = float(cd_cfg.body_semi_width)
+        sec_size = 2.0 * math.pi / n_sec
+        angles = torch.linspace(
+            -math.pi + 0.5 * sec_size, math.pi - 0.5 * sec_size,
+            n_sec, device=self.device,
+        )
+        cos_a = torch.cos(angles)
+        sin_a = torch.sin(angles)
+        self._body_radius = a * b / torch.sqrt(
+            b * b * cos_a * cos_a + a * a * sin_a * sin_a
+        )  # (36,)
+
+        self._sector_centers = torch.stack(
+            (torch.cos(angles), torch.sin(angles)), dim=1,
+        )  # (36, 2)
+
+        # ── Runtime buffers ──
+        self._sector_dists = torch.zeros(
+            self.num_envs, n_sec, device=self.device, dtype=torch.float,
+        )
+        self._sector_safe = torch.zeros(
+            self.num_envs, n_sec, device=self.device, dtype=torch.float,
+        )
+        self._safe_distances = torch.full(
+            (self.num_envs, int(self.cfg.pd_risknet.num_lidar_points)),
+            float(self.cfg.pd_risknet.ray_max_distance),
+            device=self.device, dtype=torch.float,
+        )
+
+    def _compute_sector_safety(self):
+        """Compute per-sector z-filtered effective distances and safety factors.
+
+        Replaces _compute_v_avoid() + _update_smooth_rays_dir().
+        Called every step from _post_physics_step_callback.
+        """
+        cd_cfg = self.cfg.cmd_safe
+        n_sec = int(self.cfg.pd_risknet.n_sectors)
+        sec_size = 2.0 * math.pi / n_sec
+        d_max = float(self.cfg.pd_risknet.ray_max_distance)
+
+        dist = self._raw_distances.clone()
+        pts = self.lidar_points_base
+
+        # ── Step 1: z-filtering ──
+        z = pts[..., 2]
+        z_mask = (z > cd_cfg.z_thresh_high) | (z < cd_cfg.z_thresh_low)
+        dist = torch.where(z_mask, torch.full_like(dist, d_max), dist)
+        self._safe_distances.copy_(dist)
+
+        # ── Step 2: per-sector min distance ──
+        body_azimuth = torch.atan2(pts[..., 1], pts[..., 0])
+        sec_ids = torch.floor(
+            (body_azimuth + math.pi) / sec_size
+        ).long().clamp(min=0, max=n_sec - 1)
+
+        min_dist = torch.full(
+            (dist.shape[0], n_sec), 1e9, device=dist.device, dtype=dist.dtype,
+        )
+        min_dist.scatter_reduce_(
+            1, sec_ids, dist, reduce='amin', include_self=False,
+        )
+
+        # ── Step 3: body radius compensation → effective distance ──
+        d_eff = torch.clamp(min_dist - self._body_radius.unsqueeze(0), min=0.0)
+        self._sector_dists.copy_(d_eff)
+
+        # ── Step 4: safety factor ──
+        d_safety = float(cd_cfg.d_safety)
+        d_safe_max = float(cd_cfg.d_safe_max)
+        safe = torch.clamp(
+            (d_eff - d_safety) / (d_safe_max - d_safety), 0.0, 1.0,
+        )
+        self._sector_safe.copy_(safe)
+
     def _update_replay_buffer(self):
         """每步滚动更新回放缓冲区。新 episode 前两步用广播填充避免读到脏数据。"""
         self.replay_root_states = torch.where(
