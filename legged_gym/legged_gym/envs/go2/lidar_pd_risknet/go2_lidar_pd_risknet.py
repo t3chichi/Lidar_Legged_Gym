@@ -114,12 +114,7 @@ class Go2LidarPDRiskNet(Go2):
             super()._get_env_origins()
 
     def _get_noise_scale_vec(self, cfg):
-        """Use Go2 proprio noise only; keep LiDAR history channels noise-free by default.
-
-        Base LeggedRobot assumes height-map observations at indices [48:235] when
-        terrain.measure_heights=True. This task replaces that block with flattened
-        LiDAR history, so we override the mapping to avoid injecting wrong noise.
-        """
+        """Proprio noise only; LiDAR channels are noise-free by default."""
         noise_vec = torch.zeros_like(self.obs_buf[0])
         self.add_noise = self.cfg.noise.add_noise
         noise_scales = self.cfg.noise.noise_scales
@@ -129,16 +124,9 @@ class Go2LidarPDRiskNet(Go2):
         noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
         noise_vec[6:9] = noise_scales.gravity * noise_level
         noise_vec[9:12] = 0.0  # commands
-
-        if self.cfg.pd_risknet.heading_obs_enabled:
-            noise_vec[12:13] = 0.0  # current_heading: 不额外加噪（已有独立噪声机制）
-            noise_vec[13:25] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-            noise_vec[25:37] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
-            noise_vec[37:49] = 0.0  # previous actions
-        else:
-            noise_vec[12:24] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-            noise_vec[24:36] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
-            noise_vec[36:48] = 0.0  # previous actions
+        noise_vec[12:24] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+        noise_vec[24:36] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+        noise_vec[36:48] = 0.0  # previous actions
 
         return noise_vec
 
@@ -1069,41 +1057,16 @@ class Go2LidarPDRiskNet(Go2):
         return torch.sum(torch.square(rate2), dim=1)
 
     def compute_observations(self):
-        # Keep base proprio order identical to Go2/LeggedRobot, then append LiDAR history.
-        if self.cfg.pd_risknet.heading_obs_enabled:
-            # ── 新观测：heading 目标 + current_heading ──
-            cmd_obs = torch.cat((
-                self.commands[:, 0:1] * self.obs_scales.lin_vel,
-                self.commands[:, 1:2] * self.obs_scales.lin_vel,
-                self.commands[:, 3:4] * self.obs_scales.heading,
-            ), dim=-1)
-
-            forward = quat_apply(self.base_quat, self.forward_vec)
-            current_heading = torch.atan2(forward[:, 1], forward[:, 0])
-            if self.cfg.pd_risknet.heading_noise_enabled:
-                current_heading = current_heading + torch.randn_like(current_heading) * self.cfg.pd_risknet.heading_noise_std
-
-            proprio_obs = torch.cat((
-                self.base_lin_vel * self.obs_scales.lin_vel,
-                self.base_ang_vel * self.obs_scales.ang_vel,
-                self.projected_gravity,
-                cmd_obs,
-                current_heading.unsqueeze(1) * self.obs_scales.heading,
-                (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                self.dof_vel * self.obs_scales.dof_vel,
-                self.actions,
-            ), dim=-1)
-        else:
-            # ── 旧观测：P 控制器角速度（兼容已有 checkpoint）──
-            proprio_obs = torch.cat((
-                self.base_lin_vel * self.obs_scales.lin_vel,
-                self.base_ang_vel * self.obs_scales.ang_vel,
-                self.projected_gravity,
-                self.commands[:, :3] * self.commands_scale,
-                (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                self.dof_vel * self.obs_scales.dof_vel,
-                self.actions,
-            ), dim=-1)
+        # Base proprioception: 48-dim, matching LeggedRobot convention.
+        proprio_obs = torch.cat((
+            self.base_lin_vel * self.obs_scales.lin_vel,
+            self.base_ang_vel * self.obs_scales.ang_vel,
+            self.projected_gravity,
+            self.commands[:, :3] * self.commands_scale,
+            (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
+            self.dof_vel * self.obs_scales.dof_vel,
+            self.actions,
+        ), dim=-1)
 
         self.obs_buf = torch.cat((
             proprio_obs,
@@ -1112,12 +1075,6 @@ class Go2LidarPDRiskNet(Go2):
 
         # Privileged channel for critic: proprio + terrain height samples.
         if self.privileged_obs_buf is not None:
-
-            # 临时诊断打印（确认后可注释)
-            if not hasattr(self, '_printed_height_shape'):
-                print(f"[INFO] measured_heights.shape: {self.measured_heights.shape}")
-                self._printed_height_shape = True
-
             self.privileged_obs_buf = torch.cat((proprio_obs, self.measured_heights), dim=-1)
 
         if self.add_noise:
