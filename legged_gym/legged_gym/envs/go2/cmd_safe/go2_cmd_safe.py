@@ -321,31 +321,25 @@ class Go2CmdSafe(Go2):
             return
 
         self.sensor_quat_tensor.copy_(quat_mul(self.base_quat, self._sensor_offset_quat))
-        self.sensor_pos_tensor.copy_(self.base_pos + quat_apply(self.base_quat, self._sensor_translation))
+        self.sensor_pos_tensor.copy_(
+            self.base_pos + quat_apply(self.base_quat, self._sensor_translation))
 
         lidar_points, lidar_dist = self.lidar_sensor.update()
         points_sensor = lidar_points.view(self.num_envs, -1, 3)
         n_points = points_sensor.shape[1]
         dist = lidar_dist.view(self.num_envs, -1)
-        max_dist = float(self.cfg.pd_risknet.ray_max_distance)
-        self._raw_distances.copy_(dist)  # raw, no ground filter, no noise — for rays
 
-        # Sensor frame → base frame transform (expand avoids 98 MB repeat alloc).
+        # Store raw distances (no ground filter, no noise) for cmd_safe computation.
+        self._raw_distances.copy_(dist)
+
+        # Sensor frame → base frame transform.
         quat_1x4 = self._sensor_offset_quat[0:1]
         n_total = int(points_sensor.numel() // 3)
         points_base = quat_apply(quat_1x4.expand(n_total, 4), points_sensor.reshape(-1, 3))
-        points_base = points_base.reshape(self.num_envs, n_points, 3) + self._sensor_translation.unsqueeze(1)
+        points_base = points_base.reshape(self.num_envs, n_points, 3) + \
+            self._sensor_translation.unsqueeze(1)
 
-        # 通路 A: 避障 — 干净数据，仅做地面滤除。
-        env_ids_per_point = torch.arange(self.num_envs, device=self.device).repeat_interleave(n_points)
-        quat_per_point = self.base_quat[env_ids_per_point]
-        clean_base_flat = points_base.clone().view(-1, 3)
-        clean_world_flat = quat_apply(quat_per_point, clean_base_flat) + self.base_pos[env_ids_per_point]
-        clean_world = clean_world_flat.view(self.num_envs, n_points, 3)
-        clean_is_ground = torch.abs(clean_world[..., 2]) < 0.05
-        self.avoid_distances.copy_(torch.where(clean_is_ground, torch.full_like(dist, max_dist), dist))
-
-        # 通路 B: 网络观测 — 域随机化。
+        # ── Domain randomization for network input ──
         mask_ratio = float(getattr(self.cfg.domain_rand, "lidar_point_mask_ratio", 0.0))
         if mask_ratio > 0.0:
             rand_mask = torch.rand_like(dist) < mask_ratio
@@ -353,7 +347,8 @@ class Go2CmdSafe(Go2):
             fake_dist = torch.rand_like(dist) * (hi - lo) + lo
             dir_norm = torch.linalg.norm(points_base, dim=-1, keepdim=True).clamp(min=1.0e-6)
             dir_unit = points_base / dir_norm
-            points_base = torch.where(rand_mask.unsqueeze(-1), dir_unit * fake_dist.unsqueeze(-1), points_base)
+            points_base = torch.where(
+                rand_mask.unsqueeze(-1), dir_unit * fake_dist.unsqueeze(-1), points_base)
             dist = torch.where(rand_mask, fake_dist, dist)
 
         noise_ratio = float(getattr(self.cfg.domain_rand, "lidar_distance_noise_ratio", 0.0))
@@ -400,16 +395,14 @@ class Go2CmdSafe(Go2):
         super()._post_physics_step_callback()
         self._update_replay_buffer()
         self._update_lidar_history()
-        # Reward is computed before compute_observations in LeggedRobot.post_physics_step,
-        # so V_avoid must be refreshed here to avoid one-step lag.
-        self._compute_v_avoid()
-        self._update_smooth_rays_dir()
-        # 每 10 步更新位置历史（~2 秒窗口）
+        self._compute_sector_safety()
+        # pos_hist update for stuck detection
         update_ids = (self.episode_length_buf % 10 == 0).nonzero(as_tuple=False).flatten()
         if len(update_ids) > 0:
             self.pos_hist[update_ids] = torch.cat([
                 self.pos_hist[update_ids, 1:],
-                self.root_states[update_ids, :2].unsqueeze(1)], dim=1)
+                self.root_states[update_ids, :2].unsqueeze(1),
+            ], dim=1)
 
     def check_termination(self):
         """终止检测 + 碰撞追踪 + early_reset 概率触发。"""
@@ -707,16 +700,9 @@ class Go2CmdSafe(Go2):
             self.lidar_points_base[fallback_ids] = 0.0
             self.raycast_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             self._raw_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
-            self.v_avoid[fallback_ids] = 0.0
-            self.last_dist[fallback_ids] = torch.norm(
-                self.base_pos[fallback_ids, :2] - self.env_origins[fallback_ids, :2], dim=1)
-            self._last_channel_pos[fallback_ids] = torch.sum(
-                self.base_pos[fallback_ids, :2] * self._channel_forward[fallback_ids], dim=1)
             if hasattr(self, 'last_last_actions'):
                 self.last_last_actions[fallback_ids] = 0.
             self._update_lidar_history()
-            target_dir_world = self._compute_rays_target_dir()
-            self._smooth_dir_world[fallback_ids] = target_dir_world[fallback_ids]
 
         if len(replay_ids) == 0:
             return
@@ -777,16 +763,9 @@ class Go2CmdSafe(Go2):
             self.lidar_points_base[non_replay_ids] = 0.0
             self.raycast_distances[non_replay_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             self._raw_distances[non_replay_ids] = float(self.cfg.pd_risknet.ray_max_distance)
-            self.v_avoid[non_replay_ids] = 0.0
-            self.last_dist[non_replay_ids] = torch.norm(
-                self.base_pos[non_replay_ids, :2] - self.env_origins[non_replay_ids, :2], dim=1)
-            self._last_channel_pos[non_replay_ids] = torch.sum(
-                self.base_pos[non_replay_ids, :2] * self._channel_forward[non_replay_ids], dim=1)
             if hasattr(self, 'last_last_actions'):
                 self.last_last_actions[non_replay_ids] = 0.
             self._update_lidar_history()
-            target_dir_world = self._compute_rays_target_dir()
-            self._smooth_dir_world[non_replay_ids] = target_dir_world[non_replay_ids]
 
         # ── 公共清理：所有 env ──
         self.collision_occurred[env_ids] = False
@@ -984,51 +963,6 @@ class Go2CmdSafe(Go2):
         for i in range(4):
             self.vis.draw_boldline(env_id, [corners[i], corners[(i + 1) % 4]],
                                    rad=0.01, resolution=6, color=(0, 1, 0))
-
-        # Draw avoidance direction (yellow) and combined velocity (blue).
-        start = self.base_pos[env_id].detach().cpu().numpy()
-        base_quat = self.base_quat[env_id]            # 保留在 GPU 上用于旋转
-
-        # 获取机体坐标系下的避障速度（保持为 torch 张量）
-        avoid_xy = self.v_avoid[env_id].detach()
-
-        # 构造三维机体向量，并用四元数旋转到世界坐标系
-        avoid_body = torch.tensor([avoid_xy[0].item(), avoid_xy[1].item(), 0.0], device=self.device)
-
-        avoid_world = quat_apply(base_quat, avoid_body).cpu().numpy()
-
-        avoid_vec = avoid_world.astype(np.float32)
-
-        # Scale factor: 1m arrow = 1 m/s, clamp to avoid extreme-length arrows.
-        max_display_len = 3.0
-        avoid_norm = np.linalg.norm(avoid_vec[:2])
-        if avoid_norm > 1.0e-6:
-            display_len = min(avoid_norm, max_display_len)
-            self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + display_len * avoid_vec / avoid_norm).tolist(),
-                                width=0.01, color=(1, 1, 0))
-
-        # 绘制合成速度 (蓝色)
-        combined_xy = (self.commands[env_id, :2] + self.v_avoid[env_id]).detach()
-        combined_body = torch.tensor([combined_xy[0].item(), combined_xy[1].item(), 0.0], device=self.device)
-        combined_world = quat_apply(base_quat, combined_body).cpu().numpy()
-        combined_vec = combined_world.astype(np.float32)
-        combined_norm = np.linalg.norm(combined_vec[:2])
-        if combined_norm > 1.0e-6:
-            display_len = min(combined_norm, max_display_len)
-            self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + display_len * combined_vec / combined_norm).tolist(),
-                                width=0.01, color=(0, 0, 1))  # 蓝色
-
-        # 绘制开阔方向 (绿色) — EMA 平滑后的 target_dir (世界帧单位向量)。
-        smooth_dir_2d = self._smooth_dir_world[env_id].detach()
-        smooth_norm = torch.norm(smooth_dir_2d).item()
-        if smooth_norm > 1.0e-6:
-            smooth_dir_3d = np.array([smooth_dir_2d[0].item(), smooth_dir_2d[1].item(), 0.0])
-            display_len = 2.0
-            self.vis.draw_arrow(env_id, start.tolist(),
-                                (start + display_len * smooth_dir_3d).tolist(),
-                                width=0.01, color=(0, 1, 0))
 
         # Draw pillar wireframes (soft-pretrain debug).
         if hasattr(self, '_pillar_boxes') and self._pillar_boxes:
