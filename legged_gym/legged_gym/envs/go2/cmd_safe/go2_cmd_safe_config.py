@@ -103,7 +103,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         goal_radius = 1.8
 
     class commands(Go2RoughCfg.commands):
-        heading_command = False
+        heading_command = True
         resampling_time = 2.
         curriculum = False
 
@@ -111,6 +111,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             lin_vel_x = [0.5, 1.0]
             lin_vel_y = [-0.0, 0.0]
             ang_vel_yaw = [-0.0, 0.0]
+            heading = [0, 0]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         enable_obstacles = False
