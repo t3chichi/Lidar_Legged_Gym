@@ -11,9 +11,7 @@ PD_PROXIMAL_POINTS = 384
 PD_DISTAL_POINTS = 196
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
-HEADING_OBS_ENABLED = False
-
-PD_PROPRIO_DIM = 48 + (1 if HEADING_OBS_ENABLED else 0)
+PD_PROPRIO_DIM = 48
 PD_THETA_DEG = 20.0
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
@@ -37,10 +35,6 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
         proximal_points = PD_PROXIMAL_POINTS
         distal_points = PD_DISTAL_POINTS
         split_theta_deg = PD_THETA_DEG
-
-        heading_obs_enabled = HEADING_OBS_ENABLED
-        heading_noise_enabled = True
-        heading_noise_std = 0.05
 
         n_sectors = 36
         avoid_distance_thresh = 1.0
@@ -174,7 +168,7 @@ class Go2SoftPillarPretrainCfg(Go2RoughCfg):
 
     class normalization(Go2RoughCfg.normalization):
         class obs_scales(Go2RoughCfg.normalization.obs_scales):
-            heading = 1.0
+            pass
 
     class domain_rand(Go2RoughCfg.domain_rand):
         randomize_friction = True
