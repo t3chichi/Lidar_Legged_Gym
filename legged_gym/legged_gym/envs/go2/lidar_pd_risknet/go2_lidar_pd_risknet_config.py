@@ -123,7 +123,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
           
 
         # 梯形波弯曲通道地形配置
-        corridor_width = 2.4       # 通道宽度 (m)
+        corridor_width = 3.0       # 通道宽度 (m)
         wall_height = 1.5          # 墙壁高度 (m)
         wall_thickness = 2         # 墙壁厚度 (m)
         turn_angle_deg_max = 55.0  # 最大转弯角度 (deg), 课程从 0° 到 55°
@@ -141,7 +141,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             lin_vel_x = [0.5, 1.0]  # min max [m/s]
             lin_vel_y = [-0.0, 0.0]  # min max [m/s]
             ang_vel_yaw = [-0.0, 0.0]    # min max [rad/s]
-            heading = [-3.14, 3.14]
+            heading = [0, 0]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         # Keep actor-based obstacle generator disabled for now.
@@ -164,7 +164,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
-        base_height_target = [0.26,0.33]
+        base_height_target = 0.34
         class scales:
             # Paper main rewards.
             vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
@@ -182,15 +182,15 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
             #flat_reward
-            tracking_lin_vel = 1.0  #横向移动约束  
-            tracking_ang_vel = 0.5  
+            tracking_lin_vel = 0.0  #横向移动约束  
+            tracking_ang_vel = 0.0  
             # lin_vel_z = -1.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
             ang_vel_xy = -0.05  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
-            orientation = -3.0  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
+            orientation = -2.0  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
             # torques = -0.000025  # 关节力矩惩罚：减少能耗并限制电机过载
             # dof_vel = -0.  # 关节速度惩罚：抑制关节速度过大，避免剧烈或不稳定动作
             # dof_acc = -2.5e-7  # 关节加速度惩罚：提升动作平滑性，减少瞬时加速度带来的冲击
-            base_height = -3.0  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
+            base_height = -2.0  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
             feet_air_time = 1.0  # 足端离地时间权重：影响步态周期与接触模式，鼓励合理的离地时间
             # collision = -1.  # 碰撞惩罚：对机体或连杆发生非期望碰撞时给予负奖励
             # feet_stumble = -0.0  # 足端绊碰惩罚：惩罚脚部异常冲击或失稳事件
