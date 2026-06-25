@@ -13,6 +13,7 @@ from .student_teacher import StudentTeacher
 from .student_teacher_recurrent import StudentTeacherRecurrent
 from .terrain_estimator import TerrainEstimator
 from .pd_risknet_actor_critic import PDRiskNetActorCritic
+from .cmd_safe_actor_critic import CmdSafeActorCritic
 
 __all__ = [
     "ActorCritic",
@@ -23,4 +24,5 @@ __all__ = [
     "StudentTeacherRecurrent",
     "TerrainEstimator",
     "PDRiskNetActorCritic",
+    "CmdSafeActorCritic",
 ]

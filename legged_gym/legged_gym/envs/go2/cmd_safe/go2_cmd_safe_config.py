@@ -72,7 +72,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         dist_penalty_alpha  = 0.5  # penalty scale factor
 
     class env(Go2RoughCfg.env):
-        num_observations = PD_PROPRIO_DIM + OBS_HISTORY_LENGTH * PD_NUM_LIDAR_POINTS * 3
+        num_observations = 4656  # 48 + 256*3 + 10*128*3
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         enable_fall_termination = True
         fall_projected_gravity_z_threshold = -0.1
@@ -205,19 +205,14 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
         actor_hidden_dims = [1024, 512, 256, 128]
         critic_hidden_dims = [512, 256, 128]
-        perception_enabled = True
-        history_length = OBS_HISTORY_LENGTH
-        proximal_history_length = PROX_HISTORY_LENGTH
-        distal_history_length = DIST_HISTORY_LENGTH
-        num_lidar_points = PD_NUM_LIDAR_POINTS
-        proximal_points = PD_PROXIMAL_POINTS
-        distal_points = PD_DISTAL_POINTS
-        split_theta_deg = PD_THETA_DEG
-        proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM
-        distal_feature_dim = PD_DISTAL_FEATURE_DIM
-        proprio_obs_dim = PD_PROPRIO_DIM
-        privileged_height_dim = PD_PRIV_HEIGHT_DIM
-        privileged_critic_dim = PD_PRIV_CRITIC_DIM
+        proximal_points = PD_PROXIMAL_POINTS          # 256
+        distal_history_length = DIST_HISTORY_LENGTH    # 10
+        distal_points = PD_DISTAL_POINTS              # 128
+        proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM  # 187
+        distal_feature_dim = PD_DISTAL_FEATURE_DIM    # 64
+        proprio_obs_dim = PD_PROPRIO_DIM              # 48
+        privileged_height_dim = PD_PRIV_HEIGHT_DIM    # 187
+        privileged_critic_dim = PD_PRIV_CRITIC_DIM    # 235
         privileged_supervision_coef = 1.0
         sensor_offset_rpy = [0.0, 0.0, 0.0]
         sensor_offset_pos = [0.0, 0.0, 0.0]
@@ -236,7 +231,7 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
         num_mini_batches = 4
 
     class runner(Go2RoughCfgPPO.runner):
-        policy_class_name = "PDRiskNetActorCritic"
+        policy_class_name = "CmdSafeActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
         experiment_name = "go2_cmd_safe"
