@@ -7,6 +7,7 @@ from isaacgym.torch_utils import quat_rotate_inverse, quat_apply, quat_mul, quat
 from isaacgym import gymapi, gymtorch, gymutil
 
 from legged_gym.envs.go2.go2 import Go2
+from legged_gym.utils.math_utils import quat_apply_yaw
 from LidarSensor.lidar_sensor import LidarSensor
 from LidarSensor.sensor_config.lidar_sensor_config import LidarConfig, LidarType
 
@@ -90,16 +91,6 @@ class Go2CmdSafe(Go2):
         else:
             self._channel_forward = torch.zeros(
                 self.num_envs, 2, device=self.device, dtype=torch.float)
-
-        # Smoothed world-frame direction (N, 2)
-        self._smooth_dir_world = torch.zeros(
-            self.num_envs, 2, device=self.device, dtype=torch.float, requires_grad=False)
-
-        # Precomputed 36 sector centre directions (body frame, 2D)
-        sector_centers = torch.linspace(
-            -math.pi + math.pi / 36, math.pi - math.pi / 36, 36, device=self.device)
-        self._sector_dirs = torch.stack(
-            (torch.cos(sector_centers), torch.sin(sector_centers)), dim=1)
 
         # Per-cell goal offsets table (world frame, relative to env_origin)
         if hasattr(self, "terrain") and hasattr(self.terrain, "goal_offsets") and np.any(self.terrain.goal_offsets):

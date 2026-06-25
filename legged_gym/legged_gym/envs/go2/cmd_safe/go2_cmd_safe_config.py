@@ -23,7 +23,7 @@ from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet_config import (
 )
 
 
-HEADING_OBS_ENABLED = True
+HEADING_OBS_ENABLED = False
 
 
 class Go2CmdSafeCfg(Go2RoughCfg):
