@@ -523,6 +523,45 @@ class Go2CmdSafe(Go2):
         omega_z = self.base_ang_vel[:, 2]
         return omega_z.square() / (v_xy.square() + 0.49)
 
+    def _reward_cmd_safe_vel(self):
+        """Sector-constrained safe velocity tracking.
+
+        v_safe_2d = sum_j(safe_j * align(cmd, sector_j) * sector_j)
+        r = exp(-||v_actual - v_safe_2d||^2 / sigma^2)
+        """
+        cd_cfg = self.cfg.cmd_safe
+        cmd_2d = self.commands[:, :2]
+        cmd_norm = torch.norm(cmd_2d, dim=1, keepdim=True).clamp(min=1e-8)
+
+        safe = self._sector_safe           # (N, 36)
+        centers = self._sector_centers     # (36, 2)
+
+        align = torch.matmul(cmd_2d, centers.T)        # (N, 36)
+        align = torch.clamp(align, min=0.0)
+
+        weighted = safe * align                        # (N, 36)
+        v_safe = torch.matmul(weighted, centers)       # (N, 2)
+
+        v_safe_norm = torch.norm(v_safe, dim=1, keepdim=True).clamp(min=1e-8)
+        scale = torch.clamp(cmd_norm / v_safe_norm, max=1.0)
+        v_safe = v_safe * scale
+
+        v_actual = self.base_lin_vel[:, :2]
+        vel_err = torch.sum(torch.square(v_actual - v_safe), dim=1)
+        sigma = float(cd_cfg.cmd_safe_sigma)
+        return torch.exp(-vel_err / sigma)
+
+    def _reward_sector_dist_penalty(self):
+        """Omnidirectional background distance penalty.
+
+        r = -alpha * mean_j(relu(d_thresh - d_eff_j)^2)
+        """
+        cd_cfg = self.cfg.cmd_safe
+        d_thresh = float(cd_cfg.dist_penalty_thresh)
+        alpha = float(cd_cfg.dist_penalty_alpha)
+        penalty = torch.relu(d_thresh - self._sector_dists).square()
+        return -alpha * penalty.mean(dim=1)
+
     def _reset_root_states(self, env_ids):
         if self.custom_origins:
             self.root_states[env_ids] = self.base_init_state
