@@ -25,11 +25,88 @@ class Go2CmdSafe(Go2):
             self.cfg.env.episode_length_s = 30
         super()._init_buffers()
         self.debug_viz = True
+        self._init_pd_risknet_buffers()
         self._init_cmd_safe_buffers()
         self._init_lidar_sensor()
         self._init_replay_buffers()
         if not hasattr(self, '_spawn_angles'):
             self._spawn_angles = None
+
+    def _init_pd_risknet_buffers(self):
+        cfg = self.cfg.pd_risknet
+        self.lidar_points_base = torch.zeros(
+            self.num_envs,
+            int(cfg.num_lidar_points),
+            3,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
+        self.raycast_distances = torch.full(
+            (self.num_envs, int(cfg.num_lidar_points)),
+            float(cfg.ray_max_distance),
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
+        self._raw_distances = torch.full(
+            (self.num_envs, int(cfg.num_lidar_points)),
+            float(cfg.ray_max_distance),
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
+
+        self.last_dist = torch.zeros(
+            self.num_envs,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
+        self._last_channel_pos = torch.zeros(
+            self.num_envs,
+            device=self.device,
+            dtype=torch.float,
+            requires_grad=False,
+        )
+        self._pillar_boxes = []
+        self._consecutive_upgrade_count = torch.zeros(
+            self.num_envs, device=self.device,
+            dtype=torch.int32, requires_grad=False)
+        self._consecutive_downgrade_count = torch.zeros(
+            self.num_envs, device=self.device,
+            dtype=torch.int32, requires_grad=False)
+
+        # Channel forward direction per env (based on terrain_type / col index)
+        _FORWARD_LOOKUP_TABLE = torch.tensor([
+            [0.0, 1.0],    # direction 0: +Y (north)
+            [1.0, 0.0],    # direction 1: +X (east)
+            [0.0, -1.0],   # direction 2: -Y (south)
+            [-1.0, 0.0],   # direction 3: -X (west)
+        ], device=self.device, dtype=torch.float)
+        if hasattr(self, "terrain_types"):
+            _safe_idx = self.terrain_types.long().clamp(0, 3)
+            self._channel_forward = _FORWARD_LOOKUP_TABLE[_safe_idx]
+        else:
+            self._channel_forward = torch.zeros(
+                self.num_envs, 2, device=self.device, dtype=torch.float)
+
+        # Smoothed world-frame direction (N, 2)
+        self._smooth_dir_world = torch.zeros(
+            self.num_envs, 2, device=self.device, dtype=torch.float, requires_grad=False)
+
+        # Precomputed 36 sector centre directions (body frame, 2D)
+        sector_centers = torch.linspace(
+            -math.pi + math.pi / 36, math.pi - math.pi / 36, 36, device=self.device)
+        self._sector_dirs = torch.stack(
+            (torch.cos(sector_centers), torch.sin(sector_centers)), dim=1)
+
+        # Per-cell goal offsets table (world frame, relative to env_origin)
+        if hasattr(self, "terrain") and hasattr(self.terrain, "goal_offsets") and np.any(self.terrain.goal_offsets):
+            self._goal_offsets_table = torch.from_numpy(
+                self.terrain.goal_offsets).to(self.device).to(torch.float)
+        else:
+            self._goal_offsets_table = None
 
     def _init_replay_buffers(self):
         """滚动状态缓冲区 + 碰撞标志，供碰撞回放机制使用。"""

@@ -73,6 +73,10 @@ from .go2.lidar_pd_risknet.go2_soft_pillar_pretrain import (
     Go2SoftPillarPretrainCfg, Go2SoftPillarPretrainCfgPPO,
 )
 
+# ── Command-Safe Velocity ──
+from legged_gym.envs.go2.cmd_safe import Go2CmdSafe
+from legged_gym.envs.go2.cmd_safe.go2_cmd_safe_config import Go2CmdSafeCfg, Go2CmdSafeCfgPPO
+
 from .cassie.cassie import Cassie
 from .cassie.cassie_config import CassieRoughCfg, CassieRoughCfgPPO
 from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
@@ -183,6 +187,9 @@ task_registry.register("go2_lidar_pillar", Go2LidarPDRiskNet,
                        Go2LidarPillarCfg(), Go2LidarPillarCfgPPO())
 task_registry.register("go2_soft_pretrain", Go2LidarPDRiskNet,
                        Go2SoftPillarPretrainCfg(), Go2SoftPillarPretrainCfgPPO())
+
+# ── Command-Safe Velocity ──
+task_registry.register("go2_cmd_safe", Go2CmdSafe, Go2CmdSafeCfg(), Go2CmdSafeCfgPPO())
 
 task_registry.register("a1", LeggedRobot, A1RoughCfg(), A1RoughCfgPPO())
 task_registry.register("cassie", Cassie, CassieRoughCfg(), CassieRoughCfgPPO())
