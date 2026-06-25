@@ -169,7 +169,7 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
         sensor_offset_rpy = [0.0, -2.8782, 3.14]
 
     class rewards(Go2RoughCfg.rewards):
-        base_height_target = 0.34
+        base_height_target = [0.26,0.33]
         class scales:
             # Paper main rewards.
             vel_avoid = 2.0  # 速度跟踪+避障奖励：鼓励跟踪 (v_cmd + v_avoid)
@@ -187,21 +187,21 @@ class Go2LidarPDRiskNetCfg(Go2RoughCfg):
             action_rate2 = -5.0e-3  # 二阶动作平滑惩罚：限制动作”抖动/顿挫”
 
             #flat_reward
-            tracking_lin_vel = 0.0  #横向移动约束  
-            tracking_ang_vel = 0.0  
-            lin_vel_z = -2.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
-            ang_vel_xy = -0.1  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
-            orientation = -5.0  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
-            torques = -0.000025  # 关节力矩惩罚：减少能耗并限制电机过载
+            tracking_lin_vel = 1.0  #横向移动约束  
+            tracking_ang_vel = 0.5  
+            # lin_vel_z = -1.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
+            ang_vel_xy = -0.05  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
+            orientation = -3.0  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
+            # torques = -0.000025  # 关节力矩惩罚：减少能耗并限制电机过载
             # dof_vel = -0.  # 关节速度惩罚：抑制关节速度过大，避免剧烈或不稳定动作
-            dof_acc = -2.5e-7  # 关节加速度惩罚：提升动作平滑性，减少瞬时加速度带来的冲击
-            base_height = -5.0  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
+            # dof_acc = -2.5e-7  # 关节加速度惩罚：提升动作平滑性，减少瞬时加速度带来的冲击
+            base_height = -3.0  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
             feet_air_time = 1.0  # 足端离地时间权重：影响步态周期与接触模式，鼓励合理的离地时间
             # collision = -1.  # 碰撞惩罚：对机体或连杆发生非期望碰撞时给予负奖励
             # feet_stumble = -0.0  # 足端绊碰惩罚：惩罚脚部异常冲击或失稳事件
-            action_rate = -0.01  # 动作变化率惩罚：限制相邻动作变化，平滑控制信号
-            stand_still = -0.  # 静止惩罚：惩罚长时间静止，防止策略不移动以“获利”
-            gait_2_step = -1.0
+            # action_rate = -0.01  # 动作变化率惩罚：限制相邻动作变化，平滑控制信号
+            # stand_still = -0.  # 静止惩罚：惩罚长时间静止，防止策略不移动以“获利”
+            gait_2_step = -0.5
 
             goal = 20.0  # 通道终点到达奖励（任务特有，论文无通道场景）
             # ang_vel_yaw_penalty = -2.0e-2  # 惩罚过大偏航角速度，鼓励稳定朝向
