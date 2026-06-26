@@ -154,6 +154,10 @@ class Go2CmdSafe(Go2):
             float(self.cfg.pd_risknet.ray_max_distance),
             device=self.device, dtype=torch.float,
         )
+        self._clean_points_base = torch.zeros(
+            self.num_envs, int(self.cfg.pd_risknet.num_lidar_points), 3,
+            device=self.device, dtype=torch.float, requires_grad=False,
+        )
 
     def _compute_sector_safety(self):
         """Compute per-sector z-filtered effective distances and safety factors.
@@ -167,7 +171,7 @@ class Go2CmdSafe(Go2):
         d_max = float(self.cfg.pd_risknet.ray_max_distance)
 
         dist = self._raw_distances.clone()
-        pts = self.lidar_points_base
+        pts = self._clean_points_base
 
         # ── Step 1: z-filtering ──
         z = pts[..., 2]
@@ -406,6 +410,9 @@ class Go2CmdSafe(Go2):
         points_base = quat_apply(quat_1x4.expand(n_total, 4), points_sensor.reshape(-1, 3))
         points_base = points_base.reshape(self.num_envs, n_points, 3) + \
             self._sensor_translation.unsqueeze(1)
+
+        # Save clean points (before domain rand) for reward computation.
+        self._clean_points_base.copy_(points_base)
 
         # ── Domain randomization for network input ──
         mask_ratio = float(getattr(self.cfg.domain_rand, "lidar_point_mask_ratio", 0.0))
@@ -760,6 +767,7 @@ class Go2CmdSafe(Go2):
         if len(fallback_ids) > 0:
             super().reset_idx(fallback_ids)
             self.lidar_points_base[fallback_ids] = 0.0
+            self._clean_points_base[fallback_ids] = 0.0
             self.raycast_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             self._raw_distances[fallback_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             if hasattr(self, 'last_last_actions'):
@@ -823,6 +831,7 @@ class Go2CmdSafe(Go2):
         non_replay_ids = normal_ids if enable_replay else env_ids
         if len(non_replay_ids) > 0:
             self.lidar_points_base[non_replay_ids] = 0.0
+            self._clean_points_base[non_replay_ids] = 0.0
             self.raycast_distances[non_replay_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             self._raw_distances[non_replay_ids] = float(self.cfg.pd_risknet.ray_max_distance)
             if hasattr(self, 'last_last_actions'):
@@ -918,7 +927,7 @@ class Go2CmdSafe(Go2):
 
         # Privileged channel for critic: proprio + terrain height samples.
         if self.privileged_obs_buf is not None:
-            self.privileged_obs_buf = torch.cat((proprio_obs, self.measured_heights), dim=-1)
+            self.privileged_obs_buf = self.measured_heights
 
         if self.add_noise:
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
