@@ -8,8 +8,8 @@ DIST_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 40
 PD_SPHERICAL_ELEVATION = 25
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
-PD_PROXIMAL_POINTS = 256
-PD_DISTAL_POINTS = 128
+PD_PROXIMAL_POINTS = 64
+PD_DISTAL_POINTS = 32
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
@@ -52,8 +52,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
         num_lidar_points = PD_NUM_LIDAR_POINTS
         ray_max_distance = 10.0
-        goal_enabled = True
-        goal_reward = 20.0
+        goal_enabled = False
         move_down_ratio = 0.5
         consecutive_upgrade_episodes = 5
         consecutive_downgrade_episodes = 3
@@ -72,7 +71,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         dist_penalty_alpha  = 0.5  # penalty scale factor
 
     class env(Go2RoughCfg.env):
-        num_observations = PD_PROPRIO_DIM + PROX_HISTORY_LENGTH * PD_PROXIMAL_POINTS * 3 + DIST_HISTORY_LENGTH * PD_DISTAL_POINTS * 3  # 48 + 256*3 + 10*128*3 = 48 + 768 + 3840 = 4656
+        num_observations = PD_PROPRIO_DIM + PD_NUM_LIDAR_POINTS * 3  #3048
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         enable_fall_termination = True
         fall_projected_gravity_z_threshold = -0.1
@@ -85,22 +84,24 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         measured_grid_y_range = MEASURED_GRID_Y_RANGE
         measured_grid_x_count = MEASURED_GRID_X_COUNT
         measured_grid_y_count = MEASURED_GRID_Y_COUNT
-        mesh_type = 'trimesh'
-        curriculum = True
-        max_init_terrain_level = 0
-        terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
-        terrain_length = 15
-        terrain_width = 15
-        num_rows = 5
-        num_cols = 4
-        corridor_width = 2.4
-        wall_height = 1.5
-        wall_thickness = 2
-        turn_angle_deg_max = 55.0
-        diagonal_length = 3.0
-        end_margin = 0.5
-        goal_forward_margin = 1.0
-        goal_radius = 1.8
+        mesh_type = 'plane'
+        curriculum = False
+        # mesh_type = 'trimesh'
+        # curriculum = True
+        # max_init_terrain_level = 0
+        # terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
+        # terrain_length = 15
+        # terrain_width = 15
+        # num_rows = 5
+        # num_cols = 4
+        # corridor_width = 2.4
+        # wall_height = 1.5
+        # wall_thickness = 2
+        # turn_angle_deg_max = 55.0
+        # diagonal_length = 3.0
+        # end_margin = 0.5
+        # goal_forward_margin = 1.0
+        # goal_radius = 1.8
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
@@ -126,7 +127,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         vertical_fov_deg_min = -2.0
         vertical_fov_deg_max = 57.0
         offset_pos = [0.0, 0.0, 0.0]          # LiDAR at body centre
-        sensor_offset_rpy = [0.0, 0.0, 0.0]   # horizontal, no tilt
+        sensor_offset_rpy = [0.0, 3.1416, 0.0]  # pitch=π: VFOV faces downward (ground)
 
     class rewards(Go2RoughCfg.rewards):
         base_height_target = 0.34
@@ -137,8 +138,8 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             sector_dist_penalty = 0.5
 
             # ── Task-specific rewards ──
-            goal            = 20.0
-            channel_forward = 10.0
+            goal            = 0.0
+            channel_forward = 0.0
 
             # ── Safety ──
             collision    = -2.0e-2
@@ -190,7 +191,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 10
-            max_gpu_contact_pairs = 2 ** 25
+            max_gpu_contact_pairs = 2 ** 23  #训练时2 ** 25
             default_buffer_size_multiplier = 10
 
     class replay:
@@ -204,7 +205,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
 class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
     class policy(Go2RoughCfgPPO.policy):
         actor_hidden_dims = [1024, 512, 256, 128]
-        critic_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [1024, 512, 256, 128]
         proximal_points = PD_PROXIMAL_POINTS          # 256
         distal_history_length = DIST_HISTORY_LENGTH    # 10
         distal_points = PD_DISTAL_POINTS              # 128
