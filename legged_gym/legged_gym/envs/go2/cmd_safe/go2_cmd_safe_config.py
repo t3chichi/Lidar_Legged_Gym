@@ -1,26 +1,26 @@
 # legged_gym/legged_gym/envs/go2/cmd_safe/go2_cmd_safe_config.py
 
 from legged_gym.envs.go2.flat.go2_rough_config import Go2RoughCfg, Go2RoughCfgPPO
-from legged_gym.envs.go2.lidar_pd_risknet.go2_lidar_pd_risknet_config import (
-    OBS_HISTORY_LENGTH,
-    PROX_HISTORY_LENGTH,
-    DIST_HISTORY_LENGTH,
-    PD_SPHERICAL_AZIMUTH,
-    PD_SPHERICAL_ELEVATION,
-    PD_NUM_LIDAR_POINTS,
-    PD_PROXIMAL_POINTS,
-    PD_DISTAL_POINTS,
-    PD_PROXIMAL_FEATURE_DIM,
-    PD_DISTAL_FEATURE_DIM,
-    PD_PROPRIO_DIM,
-    PD_THETA_DEG,
-    MEASURED_GRID_X_COUNT,
-    MEASURED_GRID_Y_COUNT,
-    MEASURED_GRID_X_RANGE,
-    MEASURED_GRID_Y_RANGE,
-    PD_PRIV_HEIGHT_DIM,
-    PD_PRIV_CRITIC_DIM,
-)
+
+OBS_HISTORY_LENGTH = 1
+PROX_HISTORY_LENGTH = 1  #死代码,实际使用帧数为1
+DIST_HISTORY_LENGTH = 10
+PD_SPHERICAL_AZIMUTH = 40
+PD_SPHERICAL_ELEVATION = 25
+PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
+PD_PROXIMAL_POINTS = 256
+PD_DISTAL_POINTS = 128
+PD_PROXIMAL_FEATURE_DIM = 187
+PD_DISTAL_FEATURE_DIM = 64
+PD_PROPRIO_DIM = 48
+PD_THETA_DEG = 20.0
+# Height measurement grid: auto-generated from range + count via linspace.
+MEASURED_GRID_X_COUNT = 17
+MEASURED_GRID_Y_COUNT = 11
+MEASURED_GRID_X_RANGE = [0.1, 1.5]
+MEASURED_GRID_Y_RANGE = [-0.6, 0.6]
+PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
+PD_PRIV_CRITIC_DIM = PD_PRIV_HEIGHT_DIM
 
 
 class Go2CmdSafeCfg(Go2RoughCfg):
@@ -50,7 +50,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         n_sectors = 36
         spherical_num_azimuth = PD_SPHERICAL_AZIMUTH
         spherical_num_elevation = PD_SPHERICAL_ELEVATION
-        num_lidar_points = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
+        num_lidar_points = PD_NUM_LIDAR_POINTS
         ray_max_distance = 10.0
         goal_enabled = True
         goal_reward = 20.0
@@ -72,7 +72,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         dist_penalty_alpha  = 0.5  # penalty scale factor
 
     class env(Go2RoughCfg.env):
-        num_observations = 4656  # 48 + 256*3 + 10*128*3
+        num_observations = PD_PROPRIO_DIM + PROX_HISTORY_LENGTH * PD_PROXIMAL_POINTS * 3 + DIST_HISTORY_LENGTH * PD_DISTAL_POINTS * 3  # 48 + 256*3 + 10*128*3 = 48 + 768 + 3840 = 4656
         num_privileged_obs = PD_PRIV_CRITIC_DIM
         enable_fall_termination = True
         fall_projected_gravity_z_threshold = -0.1
