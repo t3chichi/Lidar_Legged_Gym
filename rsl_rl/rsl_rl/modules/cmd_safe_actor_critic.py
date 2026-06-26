@@ -307,6 +307,9 @@ class CmdSafeActorCritic(nn.Module):
             raise ValueError(f"Unknown standard deviation type: {self.noise_std_type}")
         self.distribution = Normal(mean, std)
 
+    def reset(self, dones=None):
+        pass
+
     def act(self, observations, masks=None, hidden_states=None, **kwargs):
         self.update_distribution(observations, masks=masks, hidden_states=hidden_states)
         return self.distribution.sample()
