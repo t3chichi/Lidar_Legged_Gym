@@ -490,7 +490,8 @@ class Go2CmdSafe(Go2):
 
         # ── 通道终点到达检测（保持原有逻辑）──
         pd_cfg = self.cfg.pd_risknet
-        if self._goal_offsets_table is not None and getattr(pd_cfg, "goal_enabled", False):
+        if self._goal_offsets_table is not None and getattr(pd_cfg, "goal_enabled", False) \
+                and hasattr(self, 'terrain_levels') and hasattr(self, 'terrain_types'):
             off = self._goal_offsets_table[self.terrain_levels, self.terrain_types]
             gx = self.env_origins[:, 0] + off[:, 0]
             gy = self.env_origins[:, 1] + off[:, 1]
@@ -516,8 +517,11 @@ class Go2CmdSafe(Go2):
 
             # early_reset 概率随地形难度线性增长
             prob_range = getattr(self.cfg.replay, 'early_reset_prob_range', [0.1, 0.5])
-            early_prob = prob_range[0] + (prob_range[1] - prob_range[0]) * \
-                (self.terrain_levels.float() / max(1, self.max_terrain_level - 1)).clamp(max=1.0)
+            if hasattr(self, 'terrain_levels') and hasattr(self, 'max_terrain_level'):
+                early_prob = prob_range[0] + (prob_range[1] - prob_range[0]) * \
+                    (self.terrain_levels.float() / max(1, self.max_terrain_level - 1)).clamp(max=1.0)
+            else:
+                early_prob = prob_range[0]
             trigger_early = is_new_collision & \
                 (torch.rand(self.num_envs, device=self.device) < early_prob)
 
