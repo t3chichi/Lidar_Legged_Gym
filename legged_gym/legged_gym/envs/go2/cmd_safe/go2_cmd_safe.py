@@ -621,7 +621,7 @@ class Go2CmdSafe(Go2):
         """
         cd_cfg = self.cfg.cmd_safe
         d_thresh = float(cd_cfg.dist_penalty_thresh)
-        penalty = torch.relu(d_thresh - self._sector_dists).square()
+        penalty = torch.relu((d_thresh - self._sector_dists) / d_thresh).square()
         return -penalty.sum(dim=1)
 
     def _reset_root_states(self, env_ids):
