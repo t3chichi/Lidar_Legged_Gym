@@ -9,7 +9,7 @@ PD_SPHERICAL_AZIMUTH = 40
 PD_SPHERICAL_ELEVATION = 25
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
 PD_PROXIMAL_POINTS = 256
-PD_DISTAL_POINTS = 96
+PD_DISTAL_POINTS = 64
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
@@ -197,7 +197,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 10
-            max_gpu_contact_pairs = 2 ** 25  #训练时2 ** 25
+            max_gpu_contact_pairs = 2 ** 24  #训练时2 ** 25
             default_buffer_size_multiplier = 10
 
     class replay:
