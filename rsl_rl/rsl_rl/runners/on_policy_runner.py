@@ -20,6 +20,7 @@ from rsl_rl.modules import (
     ActorCriticRecurrent,
     EmpiricalNormalization,
     PDRiskNetActorCritic,
+    CmdSafeActorCritic,
     StudentTeacher,
     StudentTeacherRecurrent,
 )
@@ -103,7 +104,7 @@ class OnPolicyRunner:
 
         # Determine if HistoryWrapper is needed (pre-compute wrapped dim)
         self.history_wrapper = None
-        raw_num_obs = num_obs
+        self._wrapper_needed = False
         if self.use_old_interface and hasattr(self.env, 'cfg'):
             env_cfg = self.env.cfg
             if hasattr(env_cfg, 'pd_risknet') and getattr(env_cfg.pd_risknet, 'enabled', False):
@@ -112,8 +113,8 @@ class OnPolicyRunner:
                 distal_history_length = int(ppo_policy_cfg.get("distal_history_length", 10))
                 distal_points = int(ppo_policy_cfg.get("distal_points", 128))
                 proprio_dim = int(ppo_policy_cfg.get("proprio_obs_dim", 48))
-                wrapped_num_obs = proprio_dim + proximal_points * 3 + distal_history_length * distal_points * 3
-                num_obs = wrapped_num_obs
+                num_obs = proprio_dim + proximal_points * 3 + distal_history_length * distal_points * 3
+                self._wrapper_needed = True
 
         # Initialize policy (with potentially wrapped dim)
         policy = self._initialize_policy(num_obs, num_privileged_obs)
@@ -145,7 +146,7 @@ class OnPolicyRunner:
             self._initialize_old_interface()
 
         # Create HistoryWrapper if needed
-        if num_obs > raw_num_obs:
+        if self._wrapper_needed:
             # num_obs was overridden → wrapper is needed
             from legged_gym.utils.cmd_safe_history_wrapper import CmdSafeHistoryWrapper
             env_cfg = self.env.cfg
