@@ -273,7 +273,7 @@ def pillar_field_terrain(terrain, difficulty, cfg):
     数量随 difficulty 线性增加，尺寸和间距可配置。
     """
     # 数量范围（随难度插值）
-    count_min = getattr(cfg, "pillar_count_min", 5)
+    count_min = getattr(cfg, "pillar_count_min", 0)
     count_max = getattr(cfg, "pillar_count_max", 25)
     # 矩形边长范围（米）
     size_x_min = getattr(cfg, "pillar_size_x_min", 0.15)
@@ -291,15 +291,22 @@ def pillar_field_terrain(terrain, difficulty, cfg):
 
     # 根据难度插值计算当前数量
     count = int(count_min + difficulty * (count_max - count_min))
-    # 尺寸也可随难度略微增大（可选）
-    size_x = size_x_min + difficulty * (size_x_max - size_x_min)
-    size_y = size_y_min + difficulty * (size_y_max - size_y_min)
-    height = height_min + difficulty * (height_max - height_min)
+    # 尺寸随机
+    size_x = []
+    size_y = []
+    height = []
+    size_x_px = []
+    size_y_px = []
+    height_px = []
+    for i in range(count):
+        size_x.append(size_x_min + np.random.uniform(0.0, 1.0) * (size_x_max - size_x_min))
+        size_y.append(size_y_min + np.random.uniform(0.0, 1.0) * (size_y_max - size_y_min))
+        height.append(height_min + np.random.uniform(0.0, 1.0) * (height_max - height_min))
 
-    # 转换为像素单位
-    size_x_px = int(size_x / terrain.horizontal_scale)
-    size_y_px = int(size_y / terrain.horizontal_scale)
-    height_px = int(height / terrain.vertical_scale)
+        size_x_px.append(int(size_x[i] / terrain.horizontal_scale))
+        size_y_px.append(int(size_y[i] / terrain.horizontal_scale))
+        height_px.append(int(height[i] / terrain.vertical_scale))
+
     min_sep_px = int(min_separation / terrain.horizontal_scale)
     clear_radius_px = int(center_clear_radius / terrain.horizontal_scale)
     spawn_radius_px = int(spawn_radius / terrain.horizontal_scale)
@@ -311,45 +318,51 @@ def pillar_field_terrain(terrain, difficulty, cfg):
     # 生成满足约束的随机位置
     max_attempts = count * 100
     positions = []
-    for _ in range(max_attempts):
-        if len(positions) >= count:
-            break
-        # 在圆形区域内随机采样
-        r = np.random.uniform(clear_radius_px, spawn_radius_px)
-        theta = np.random.uniform(0, 2 * np.pi)
-        cx = int(center_x + r * np.cos(theta))
-        cy = int(center_y + r * np.sin(theta))
+    for i in range(count):
+        half_x = size_x_px[i] // 2
+        half_y = size_y_px[i] // 2
+        for _ in range(max_attempts):
+            # 在圆形区域内随机采样
+            r = np.random.uniform(clear_radius_px, spawn_radius_px)
+            theta = np.random.uniform(0, 2 * np.pi)
+            cx = int(center_x + r * np.cos(theta))
+            cy = int(center_y + r * np.sin(theta))
 
-        # 边界检查
-        if (cx - size_x_px//2 < 0 or cx + size_x_px//2 >= terrain.width or
-            cy - size_y_px//2 < 0 or cy + size_y_px//2 >= terrain.length):
-            continue
+            # 边界检查
+            if (cx - half_x < 0 or cx + half_x >= terrain.width or
+                cy - half_y < 0 or cy + half_y >= terrain.length):
+                continue
 
-        # 检查与中心点距离
-        if np.hypot(cx - center_x, cy - center_y) < clear_radius_px:
-            continue
+            # 检查与中心点距离
+            if np.hypot(cx - center_x, cy - center_y) < clear_radius_px:
+                 continue
 
-        # 检查与已有位置的间距
-        valid = True
-        for px, py in positions:
-            if np.hypot(cx - px, cy - py) < min_sep_px:
-                valid = False
+            # 检查与已有位置的间距
+            valid = True
+            for px, py, pid in positions:
+                half_1 = max(half_x, half_y)
+                half_2 = max(size_x_px[pid] // 2, size_y_px[pid] // 2)
+                sep = min_sep_px + half_1 + half_2
+                if np.hypot(cx - px, cy - py) < sep:
+                    valid = False
+                    break
+            if valid:
+                positions.append((cx, cy, i))
                 break
-        if valid:
-            positions.append((cx, cy))
 
     # 在高度图上绘制矩形棱柱
-    for cx, cy in positions:
+    for cx, cy, idx in positions:
+        h_base = height_px[idx]
         if allow_height_variation:
-            h_px = np.random.randint(int(height_px * 0.6), height_px + 1)
+            h_px = np.random.randint(int(h_base * 0.6), h_base + 1)
         else:
-            h_px = height_px
+            h_px = h_base
 
         # 矩形区域
-        x1 = cx - size_x_px // 2
-        x2 = cx + size_x_px // 2
-        y1 = cy - size_y_px // 2
-        y2 = cy + size_y_px // 2
+        x1 = cx - size_x_px[idx] // 2
+        x2 = cx + size_x_px[idx] // 2
+        y1 = cy - size_y_px[idx] // 2
+        y2 = cy + size_y_px[idx] // 2
         # 确保不越界
         x1 = max(0, x1)
         x2 = min(terrain.width, x2)

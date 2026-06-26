@@ -23,7 +23,7 @@ class Go2CmdSafe(Go2):
 
     def _init_buffers(self):
         if not getattr(self.cfg.pd_risknet, "soft_pretrain", False):
-            self.cfg.env.episode_length_s = 30
+            self.cfg.env.episode_length_s = 15
         super()._init_buffers()
         self.debug_viz = True
         self._init_pd_risknet_buffers()
@@ -844,8 +844,6 @@ class Go2CmdSafe(Go2):
         self.is_replay[env_ids] = False
         self.stay_timer[env_ids] = 0
         self.pos_hist[env_ids, :, :] = 0.
-
-
 
     def _reward_channel_forward(self):
         cfg = self.cfg.rewards

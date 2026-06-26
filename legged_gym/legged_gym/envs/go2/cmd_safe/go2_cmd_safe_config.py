@@ -8,17 +8,17 @@ DIST_HISTORY_LENGTH = 10
 PD_SPHERICAL_AZIMUTH = 40
 PD_SPHERICAL_ELEVATION = 25
 PD_NUM_LIDAR_POINTS = PD_SPHERICAL_AZIMUTH * PD_SPHERICAL_ELEVATION
-PD_PROXIMAL_POINTS = 64
-PD_DISTAL_POINTS = 32
+PD_PROXIMAL_POINTS = 256
+PD_DISTAL_POINTS = 128
 PD_PROXIMAL_FEATURE_DIM = 187
 PD_DISTAL_FEATURE_DIM = 64
 PD_PROPRIO_DIM = 48
-PD_THETA_DEG = 20.0
+PD_THETA_DEG = 12.0
 # Height measurement grid: auto-generated from range + count via linspace.
 MEASURED_GRID_X_COUNT = 17
 MEASURED_GRID_Y_COUNT = 11
-MEASURED_GRID_X_RANGE = [0.1, 1.5]
-MEASURED_GRID_Y_RANGE = [-0.6, 0.6]
+MEASURED_GRID_X_RANGE = [-1.0, 1.0]
+MEASURED_GRID_Y_RANGE = [-0.8, 0.8]
 PD_PRIV_HEIGHT_DIM = MEASURED_GRID_X_COUNT * MEASURED_GRID_Y_COUNT
 PD_PRIV_CRITIC_DIM = PD_PRIV_HEIGHT_DIM
 
@@ -36,7 +36,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
 
     class init_state(Go2RoughCfg.init_state):
         randomize_rot = True
-        rot_randomization_range = [-0.2, 0.2]
+        rot_randomization_range = [-3.14, 3.14]
         spawn_offset_range = 0.4
 
     class pd_risknet:
@@ -84,35 +84,41 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         measured_grid_y_range = MEASURED_GRID_Y_RANGE
         measured_grid_x_count = MEASURED_GRID_X_COUNT
         measured_grid_y_count = MEASURED_GRID_Y_COUNT
-        mesh_type = 'plane'
-        curriculum = False
-        # mesh_type = 'trimesh'
-        # curriculum = True
-        # max_init_terrain_level = 0
-        # terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 1.0]
-        # terrain_length = 15
-        # terrain_width = 15
-        # num_rows = 5
-        # num_cols = 4
-        # corridor_width = 2.4
-        # wall_height = 1.5
-        # wall_thickness = 2
-        # turn_angle_deg_max = 55.0
-        # diagonal_length = 3.0
-        # end_margin = 0.5
-        # goal_forward_margin = 1.0
-        # goal_radius = 1.8
+        mesh_type = 'trimesh'
+        curriculum = True
+        # difficulty_scale = 1.0
+        max_init_terrain_level = 0
+        terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 0, 1.0]
+
+        terrain_length = 15
+        terrain_width = 15
+        num_rows = 8
+        num_cols = 4
+
+        # 柱子参数（pillar_field_terrain 已通过 getattr 读取）
+        pillar_count_min = 0
+        pillar_count_max = 25
+        pillar_size_x_min = 0.5
+        pillar_size_x_max = 2.0
+        pillar_size_y_min = 0.5
+        pillar_size_y_max = 2.0
+        pillar_height_min = 0.00
+        pillar_height_max = 1.00
+        pillar_min_separation = 1.2  
+        pillar_center_clear_radius = 2.0
+        pillar_spawn_radius = 7.0
+        pillar_allow_height_variation = True
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
-        resampling_time = 2.
+        resampling_time = 4.0
         curriculum = False
 
         class ranges(Go2RoughCfg.commands.ranges):
-            lin_vel_x = [0.5, 1.0]
-            lin_vel_y = [-0.0, 0.0]
+            lin_vel_x = [-1.0, 1.0]
+            lin_vel_y = [-1.0, 1.0]
             ang_vel_yaw = [-0.0, 0.0]
-            heading = [0, 0]
+            heading = [-3.14, 3.14]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
         enable_obstacles = False
@@ -159,12 +165,12 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             vel_avoid       = 0.0
             rays            = 0.0
             base_height     = 0.0
-            tracking_lin_vel = 0.0
-            tracking_ang_vel = 0.0
-            ang_vel_xy      = 0.0
-            orientation     = 0.0
-            feet_air_time   = 0.0
-            gait_2_step     = 0.0
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+            ang_vel_xy      = -0.05
+            orientation     = -2.0
+            feet_air_time   = 1.0
+            gait_2_step     = -0.5
             curvature       = 0.0
             ang_vel_yaw_penalty = 0.0
             stand_still     = 0.0
@@ -191,7 +197,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 10
-            max_gpu_contact_pairs = 2 ** 23  #训练时2 ** 25
+            max_gpu_contact_pairs = 2 ** 25  #训练时2 ** 25
             default_buffer_size_multiplier = 10
 
     class replay:
