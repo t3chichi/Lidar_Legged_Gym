@@ -616,13 +616,13 @@ class Go2CmdSafe(Go2):
     def _reward_sector_dist_penalty(self):
         """Omnidirectional background distance penalty.
 
-        r = -alpha * mean_j(relu(d_thresh - d_eff_j)^2)
+        r = -sum_j(relu(d_thresh - d_eff_j)^2)
+        Scaled by config weight (no internal alpha).
         """
         cd_cfg = self.cfg.cmd_safe
         d_thresh = float(cd_cfg.dist_penalty_thresh)
-        alpha = float(cd_cfg.dist_penalty_alpha)
         penalty = torch.relu(d_thresh - self._sector_dists).square()
-        return -alpha * penalty.mean(dim=1)
+        return -penalty.sum(dim=1)
 
     def _reset_root_states(self, env_ids):
         if self.custom_origins:
