@@ -85,15 +85,15 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         measured_grid_x_count = MEASURED_GRID_X_COUNT
         measured_grid_y_count = MEASURED_GRID_Y_COUNT
         mesh_type = 'trimesh'
-        curriculum = False
+        curriculum = True
         # difficulty_scale = 1.0
         max_init_terrain_level = 0
         terrain_proportions = [0, 0, 0, 0, 0, 0, 0, 0, 1.0]
 
         terrain_length = 15
         terrain_width = 15
-        num_rows = 4
-        num_cols = 1
+        num_rows = 8
+        num_cols = 4
 
         # 柱子参数（pillar_field_terrain 已通过 getattr 读取）
         pillar_count_min = 0
@@ -197,7 +197,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
     class sim(Go2RoughCfg.sim):
         class physx(Go2RoughCfg.sim.physx):
             num_threads = 10
-            max_gpu_contact_pairs = 2 ** 23  #训练时2 ** 25
+            max_gpu_contact_pairs = 2 ** 24  #训练时2 ** 25
             default_buffer_size_multiplier = 10
 
     class replay:
