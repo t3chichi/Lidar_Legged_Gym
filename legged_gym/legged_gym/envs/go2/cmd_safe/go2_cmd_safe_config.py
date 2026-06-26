@@ -140,7 +140,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         class scales:
             # ── New core rewards ──
             # cmd_safe_vel        = 2.0
-            sector_dist_penalty = 0.5
+            # sector_dist_penalty = 0.5
 
             # # ── Task-specific rewards ──
             # goal            = 0.0
