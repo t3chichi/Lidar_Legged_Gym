@@ -173,9 +173,22 @@ class Go2CmdSafe(Go2):
         dist = self._raw_distances.clone()
         pts = self._clean_points_base
 
-        # ── Step 1: z-filtering ──
-        z = pts[..., 2]
-        z_mask = (z > cd_cfg.z_thresh_high) | (z < cd_cfg.z_thresh_low)
+        # ── Step 1: ground + overhead filtering ──
+        n_points = pts.shape[1]
+
+        # Ground: world-frame z≈0 (stable, immune to body tilt)
+        pts_flat = pts.reshape(-1, 3)
+        env_ids = torch.arange(self.num_envs, device=self.device).repeat_interleave(n_points)
+        quat_exp = self.base_quat[env_ids]
+        pts_world_flat = quat_apply(quat_exp, pts_flat)
+        pts_world = pts_world_flat.reshape(self.num_envs, n_points, 3)
+        pts_world = pts_world + self.base_pos.unsqueeze(1)
+        is_ground = pts_world[..., 2].abs() < 0.05
+
+        # Overhead: body-frame z > threshold (obstacles above robot)
+        is_overhead = pts[..., 2] > cd_cfg.z_thresh_high
+
+        z_mask = is_ground | is_overhead
         dist = torch.where(z_mask, torch.full_like(dist, d_max), dist)
         self._safe_distances.copy_(dist)
 

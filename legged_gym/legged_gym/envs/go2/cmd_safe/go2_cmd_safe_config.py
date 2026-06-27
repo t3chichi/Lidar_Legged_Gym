@@ -62,8 +62,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
     class cmd_safe:
         body_semi_length = 0.188   # a: collision box L/2 (0.3762/2)
         body_semi_width  = 0.047   # b: collision box W/2 (0.0935/2)
-        z_thresh_high = 0.10       # body top + 3.3cm clearance
-        z_thresh_low  = -0.20      # body bottom + 14cm leg clearance
+        z_thresh_high = 0.10       # body top + 3.3cm clearance (overhead filter)
         d_safety   = 0.10          # additional safety gap (m)
         d_safe_max = 1.0           # distance where safe=1
         cmd_safe_sigma = 0.25      # gaussian kernel width
