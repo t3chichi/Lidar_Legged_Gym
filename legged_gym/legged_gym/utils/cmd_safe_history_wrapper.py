@@ -185,8 +185,8 @@ class CmdSafeHistoryWrapper:
         _, _, phi = self._cart_to_sphere(pts_sensor)
 
         valid_mask = lidar_raw.abs().sum(dim=-1) > 0
-        proximal_mask = (phi <= self.phi_threshold_rad) & valid_mask
-        distal_mask = (phi > self.phi_threshold_rad) & valid_mask
+        proximal_mask = (phi >= self.phi_threshold_rad) & valid_mask
+        distal_mask = (phi < self.phi_threshold_rad) & valid_mask
 
         prox_k = self.proximal_points
         prox_fps = self._batch_fps(lidar_raw, proximal_mask, prox_k)
