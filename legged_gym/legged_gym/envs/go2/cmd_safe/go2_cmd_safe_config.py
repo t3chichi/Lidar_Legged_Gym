@@ -150,6 +150,9 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             termination  = -10.0
 
             # ── Auxiliary (paper Table 5) ──
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+
             lin_vel_z    = -3.0e-4
             feet_stumble = -2.0e-2
             dof_pos_limits = -0.2
@@ -158,61 +161,18 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             dof_acc      = -2.5e-7
             action_rate  = -5.0e-3
             action_rate2 = -5.0e-3
+            ang_vel_xy      = -0.05
+            orientation     = -2.0
+            base_height     = -2.0
+            feet_air_time   = 1.0
+            gait_2_step     = -1.0
 
             # ── Explicitly zeroed ──
             vel_avoid       = 0.0
             rays            = 0.0
-            base_height     = 0.0
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
-            ang_vel_xy      = -0.05
-            orientation     = -2.0
-            feet_air_time   = 1.0
-            gait_2_step     = -0.5
             curvature       = 0.0
             ang_vel_yaw_penalty = 0.0
             stand_still     = 0.0
-
-            # vel_avoid = 0.0
-            # rays = 0.0
-
-            # lin_vel_z = 0 # 惩罚机体 z 方向线速度，抑制上下抖动/跳动
-            # feet_stumble = 0  # 惩罚脚部绊碰（足端受到异常横向冲击）
-            # collision = 0  # 惩罚机体/连杆非期望碰撞
-            # dof_pos_limits = 0  # 惩罚关节接近或超过位置限位
-            # torques = 0  # 惩罚关节力矩过大，降低能耗和电机负担
-            # dof_vel = 0  # 惩罚关节速度过大，抑制过激动作
-            # dof_acc = 0  # 惩罚关节加速度过大，提升动作平滑性
-            # action_rate = 0  # 一阶动作平滑惩罚：限制相邻时刻动作变化
-            # action_rate2 = 0  # 二阶动作平滑惩罚：限制动作“抖动/顿挫”
-
-            # #flat_reward
-            # termination = -0.0  # 终止惩罚：在环境终止时给予负奖励，避免策略利用终止状态
-            # tracking_lin_vel = 1.0  # 线速度跟踪奖励：鼓励按指令线速度前进
-            # tracking_ang_vel = 0.5  # 角速度跟踪奖励：鼓励按指令角速度跟踪朝向
-            # lin_vel_z = -2.0  # 垂直速度惩罚：抑制机体在 z 方向的上下抖动或跳动
-            # ang_vel_xy = -0.05  # 横向角速度惩罚：抑制 roll/pitch 方向过大角速度，保持机体稳定
-            # orientation = -0.  # 姿态偏差惩罚：惩罚与目标姿态的偏离，鼓励保持期望姿态
-            # torques = -0.00001  # 关节力矩惩罚：减少能耗并限制电机过载
-            # dof_vel = -0.  # 关节速度惩罚：抑制关节速度过大，避免剧烈或不稳定动作
-            # dof_acc = -2.5e-7  # 关节加速度惩罚：提升动作平滑性，减少瞬时加速度带来的冲击
-            # base_height = -0.  # 基座高度惩罚：鼓励保持目标基座高度，防止过低或过高
-            # feet_air_time = 1.0  # 足端离地时间权重：影响步态周期与接触模式，鼓励合理的离地时间
-            # collision = -1.  # 碰撞惩罚：对机体或连杆发生非期望碰撞时给予负奖励
-            # feet_stumble = -0.0  # 足端绊碰惩罚：惩罚脚部异常冲击或失稳事件
-            # action_rate = -0.01  # 动作变化率惩罚：限制相邻动作变化，平滑控制信号
-            # stand_still = -0.  # 静止惩罚：惩罚长时间静止，防止策略不移动以“获利”
-
-            # # Overrides
-            # orientation = -5.0  # 覆盖的姿态惩罚权重：更强烈地惩罚姿态偏差
-            # torques = -0.000025  # 覆盖的力矩惩罚权重：更严格地限制关节力矩
-            # feet_air_time = 1.0  # 覆盖的足端离地时间权重：保持/强调期望步态空中时间
-            # ang_vel_xy = -0.1
-            # base_height = -5.0
-            # # feet_contact_forces = -0.01
-            # # gait_scheduler = -3
-
-            # gait_2_step = -1.0  # 步态相关惩罚/奖励：用于鼓励或抑制特定步态（如两步周期）
 
     class normalization(Go2RoughCfg.normalization):
         pass
