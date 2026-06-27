@@ -109,14 +109,14 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         # pillar_allow_height_variation = True
 
     class commands(Go2RoughCfg.commands):
-        heading_command = True
+        heading_command = False
         resampling_time = 4.0
         curriculum = False
 
         class ranges(Go2RoughCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-1.0, 1.0]
-            ang_vel_yaw = [-0.0, 0.0]
+            ang_vel_yaw = [-1.0, 1.0]
             heading = [-3.14, 3.14]
 
     class obstacle_gen(Go2RoughCfg.obstacle_gen):
@@ -208,8 +208,8 @@ class Go2CmdSafeCfg(Go2RoughCfg):
             orientation = -5.0  # 覆盖的姿态惩罚权重：更强烈地惩罚姿态偏差
             torques = -0.000025  # 覆盖的力矩惩罚权重：更严格地限制关节力矩
             feet_air_time = 1.0  # 覆盖的足端离地时间权重：保持/强调期望步态空中时间
-            ang_vel_xy = -0.1
-            base_height = -5.0
+            ang_vel_xy = -0.05
+            base_height = -6.0
             # feet_contact_forces = -0.01
             # gait_scheduler = -3
 
