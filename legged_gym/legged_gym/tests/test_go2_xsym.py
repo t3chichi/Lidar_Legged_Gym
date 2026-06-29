@@ -145,6 +145,51 @@ class TestInvariants:
         assert obs_aug is None
         assert act_aug.shape == (8, 12)
 
+    def test_double_mirror_is_exact_identity(self):
+        """Mirror applied twice must recover the original EXACTLY.
+
+        Pre-condition: LiDAR points must be angular-sorted (as the
+        CmdSafeHistoryWrapper produces), matching production conditions.
+        """
+        func = _make_func()
+        # Load sort_points_by_angular_key via importlib (bypasses __init__.py)
+        mod_path = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "utils", "pointcloud_geometry.py"))
+        spec = importlib.util.spec_from_file_location(
+            "pgeo", mod_path, submodule_search_locations=[])
+        pgeo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pgeo)
+        sort_fn = pgeo.sort_points_by_angular_key
+
+        torch.manual_seed(42)
+        proprio = torch.randn(4, 48)
+        prox_raw = torch.randn(4, 256, 3)
+        dist_raw = torch.randn(4, 1280, 3)
+        q = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device='cpu')
+        t = torch.zeros(1, 3)
+        prox_sorted = sort_fn(prox_raw, q, t)
+        dist_sorted = sort_fn(dist_raw, q, t)
+
+        obs = torch.cat([
+            proprio,
+            prox_sorted.reshape(4, -1),
+            dist_sorted.reshape(4, -1),
+        ], dim=1)
+
+        # First mirror
+        obs_aug, _ = func(obs=obs, actions=None)
+        obs_m1 = obs_aug[4:]
+        # Second mirror on the mirrored half
+        obs_aug2, _ = func(obs=obs_m1, actions=None)
+        obs_m2 = obs_aug2[4:]
+
+        # Must be EXACT
+        diff = (obs_m2 - obs).abs()
+        assert diff.max().item() == 0.0, (
+            f"Double mirror not exact identity, max diff={diff.max().item():.2e}"
+        )
+
 
 class TestNumericalStability:
     def test_large_batch_no_nan(self):
