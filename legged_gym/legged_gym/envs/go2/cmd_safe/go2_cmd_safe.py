@@ -23,7 +23,7 @@ class Go2CmdSafe(Go2):
 
     def _init_buffers(self):
         if not getattr(self.cfg.pd_risknet, "soft_pretrain", False):
-            self.cfg.env.episode_length_s = 15
+            self.cfg.env.episode_length_s = 20
         super()._init_buffers()
         self.debug_viz = True
         self._init_pd_risknet_buffers()

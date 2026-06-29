@@ -109,7 +109,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
 
     class commands(Go2RoughCfg.commands):
         heading_command = True
-        resampling_time = 4.0
+        resampling_time = 20.0
         curriculum = False
 
         class ranges(Go2RoughCfg.commands.ranges):
