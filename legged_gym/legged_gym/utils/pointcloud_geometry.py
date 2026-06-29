@@ -35,7 +35,7 @@ def cartesian_to_spherical(
     x, y, z = points[..., 0], points[..., 1], points[..., 2]
     r = torch.norm(points, dim=-1)
     azimuth = torch.atan2(y, x)
-    phi = torch.asin(z / (r + 1e-9))
+    phi = torch.asin(torch.clamp(z / (r + 1e-9), -1.0, 1.0))
     return r, azimuth, phi
 
 
