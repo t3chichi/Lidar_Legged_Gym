@@ -67,6 +67,7 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         d_safe_max = 1.0           # distance where safe=1
         cmd_safe_sigma = 0.25      # gaussian kernel width
         dist_penalty_thresh = 1.0  # penalty activates below this (m)
+        exp_sigma = -3.0          # decay rate for exponential distance penalty
 
     class env(Go2RoughCfg.env):
         num_observations = PD_PROPRIO_DIM + PD_NUM_LIDAR_POINTS * 3  #3048

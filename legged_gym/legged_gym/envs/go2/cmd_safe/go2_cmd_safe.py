@@ -627,15 +627,37 @@ class Go2CmdSafe(Go2):
         return torch.exp(-vel_err / sigma)
 
     def _reward_sector_dist_penalty(self):
-        """Omnidirectional background distance penalty.
+        """Directionally-weighted exponential distance penalty.
 
-        r = -sum_j(relu(d_thresh - d_eff_j)^2)
-        Scaled by config weight (no internal alpha).
+        penalty_j = relu(exp(sigma*d_j) - exp(sigma*d_thresh)) / (1 - exp(sigma*d_thresh))
+        weight_j   = cos²(θ_j/2) centred on commanded velocity direction
+        r = -sum_j(w_j * p_j)
         """
         cd_cfg = self.cfg.cmd_safe
         d_thresh = float(cd_cfg.dist_penalty_thresh)
-        penalty = torch.relu((d_thresh - self._sector_dists) / d_thresh).square()
-        return -penalty.sum(dim=1)
+        sigma = float(getattr(cd_cfg, 'exp_sigma', -3.0))
+
+        d = self._sector_dists  # (N, 36)
+
+        # Exponential penalty: 1 at d=0, 0 at d=d_thresh, smooth in between
+        exp_d = torch.exp(sigma * d)
+        exp_thresh = math.exp(sigma * d_thresh)
+        penalty = torch.clamp(
+            (exp_d - exp_thresh) / max(1.0 - exp_thresh, 1e-8), min=0.0)
+
+        # Directional weight: cos²(θ/2) = (1 + cos(θ)) / 2
+        cmd_xy = self.commands[:, :2]
+        cmd_norm = torch.norm(cmd_xy, dim=1, keepdim=True)
+        cmd_dir = cmd_xy / cmd_norm.clamp(min=1e-8)
+        zero_cmd = cmd_norm.squeeze(-1) < 0.01
+        if zero_cmd.any():
+            cmd_dir[zero_cmd] = torch.tensor([1.0, 0.0], device=self.device,
+                                             dtype=cmd_dir.dtype)
+
+        cos_theta = torch.matmul(cmd_dir, self._sector_centers.T)  # (N, 36)
+        w = (1.0 + cos_theta) / 2.0
+
+        return -(w * penalty).sum(dim=1)
 
     def _reset_root_states(self, env_ids):
         if self.custom_origins:
