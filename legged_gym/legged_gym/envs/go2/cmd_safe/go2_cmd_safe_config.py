@@ -98,12 +98,12 @@ class Go2CmdSafeCfg(Go2RoughCfg):
         pillar_count_min = 5
         pillar_count_max = 25
         pillar_size_x_min = 0.5
-        pillar_size_x_max = 2.0
+        pillar_size_x_max = 4.0
         pillar_size_y_min = 0.5
-        pillar_size_y_max = 2.0
+        pillar_size_y_max = 4.0
         pillar_height_min = 0.00
         pillar_height_max = 1.50
-        pillar_min_separation = 1.2  
+        pillar_min_separation = 0.8  
         pillar_center_clear_radius = 2.0
         pillar_spawn_radius = 7.0
         pillar_allow_height_variation = True
@@ -251,4 +251,4 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
         num_steps_per_env = 24
         experiment_name = "go2_cmd_safe"
         run_name = ""
-        max_iterations = 4000
+        max_iterations = 8000
