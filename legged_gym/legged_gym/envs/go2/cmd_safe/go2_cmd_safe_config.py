@@ -237,6 +237,14 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
         num_learning_epochs = 5
         num_mini_batches = 4
 
+        class symmetry_cfg:
+            use_data_augmentation = True
+            use_mirror_loss = True
+            mirror_loss_coeff = 1.0
+            data_augmentation_func = (
+                "legged_gym.envs.go2.cmd_safe.go2_cmd_safe:get_go2_cmd_safe_xsym_obs_act"
+            )
+
     class runner(Go2RoughCfgPPO.runner):
         policy_class_name = "CmdSafeActorCritic"
         algorithm_class_name = "PPO"
