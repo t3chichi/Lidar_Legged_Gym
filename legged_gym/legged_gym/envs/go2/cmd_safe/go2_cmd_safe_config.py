@@ -235,7 +235,7 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
         desired_kl = 0.01
         max_grad_norm = 1.0
         num_learning_epochs = 5
-        num_mini_batches = 8
+        num_mini_batches = 4
 
         class symmetry_cfg:
             use_data_augmentation = True
