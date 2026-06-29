@@ -9,16 +9,13 @@ from __future__ import annotations
 import math
 import torch
 
-
-def _quat_conjugate(q: torch.Tensor) -> torch.Tensor:
-    return q * torch.tensor([-1, -1, -1, 1], device=q.device, dtype=q.dtype)
-
-
-def _quat_apply(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-    q_vec = q[..., :3]
-    q_scalar = q[..., 3:4]
-    t = 2.0 * torch.cross(q_vec, v, dim=-1)
-    return v + q_scalar * t + torch.cross(q_vec, t, dim=-1)
+from legged_gym.utils.pointcloud_geometry import (
+    cartesian_to_spherical,
+    quaternion_apply,
+    quaternion_conjugate,
+    sort_points_by_angular_key,
+    to_sensor_frame,
+)
 
 
 class CmdSafeHistoryWrapper:
@@ -52,9 +49,11 @@ class CmdSafeHistoryWrapper:
         self.device = device
 
         if sensor_offset_quat is not None:
-            self._sensor_conj = _quat_conjugate(sensor_offset_quat[0:1]).to(device)
+            self._sensor_conj = quaternion_conjugate(sensor_offset_quat[0:1]).to(device)
+            self._sensor_quat = sensor_offset_quat[0:1].to(device)
         else:
             self._sensor_conj = None
+            self._sensor_quat = None
         if sensor_translation is not None:
             self._sensor_t = sensor_translation[0:1].to(device)
         else:
@@ -78,20 +77,10 @@ class CmdSafeHistoryWrapper:
         return r, azimuth, phi
 
     def _to_sensor_frame(self, points_base: torch.Tensor) -> torch.Tensor:
-        t = self._sensor_t.to(points_base.device)
-        pts = points_base - t.unsqueeze(1)
-        if self._sensor_conj is not None:
-            q = self._sensor_conj.to(points_base.device)
-            B, N = pts.shape[:2]
-            pts = _quat_apply(q.expand(B * N, 4), pts.reshape(-1, 3)).reshape(B, N, 3)
-        return pts
+        return to_sensor_frame(points_base, self._sensor_quat, self._sensor_t)
 
     def _sort_by_angular_key(self, points: torch.Tensor) -> torch.Tensor:
-        pts = self._to_sensor_frame(points)
-        _, azimuth, phi = self._cart_to_sphere(pts)
-        key = phi * (2.0 * math.pi) + azimuth
-        order = torch.argsort(key, dim=1)
-        return torch.gather(points, 1, order.unsqueeze(-1).expand_as(points))
+        return sort_points_by_angular_key(points, self._sensor_quat, self._sensor_t)
 
     def _batch_fps(self, points: torch.Tensor, mask: torch.Tensor, k: int) -> torch.Tensor:
         B, N_max, _ = points.shape
@@ -139,7 +128,7 @@ class CmdSafeHistoryWrapper:
         B, N = points_sensor.shape[:2]
         device = points_sensor.device
 
-        _, azimuth, phi = self._cart_to_sphere(points_sensor)
+        _, azimuth, phi = cartesian_to_spherical(points_sensor)
 
         sort_key = torch.where(
             mask,
@@ -182,7 +171,7 @@ class CmdSafeHistoryWrapper:
         lidar_raw = obs_buf[:, self.proprio_dim:].reshape(B, -1, 3)
 
         pts_sensor = self._to_sensor_frame(lidar_raw)
-        _, _, phi = self._cart_to_sphere(pts_sensor)
+        _, _, phi = cartesian_to_spherical(pts_sensor)
 
         valid_mask = lidar_raw.abs().sum(dim=-1) > 0
         proximal_mask = (phi >= self.phi_threshold_rad) & valid_mask
