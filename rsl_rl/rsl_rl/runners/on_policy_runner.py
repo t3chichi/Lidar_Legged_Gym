@@ -316,6 +316,8 @@ class OnPolicyRunner:
                 proximal_points=proximal_points,
                 distal_history_points=distal_history_points,
                 distal_history_length=distal_history_length,
+                height_grid_x_count=int(getattr(self.env.cfg.terrain, 'measured_grid_x_count', 17)),
+                height_grid_y_count=int(getattr(self.env.cfg.terrain, 'measured_grid_y_count', 11)),
             )
             sc["data_augmentation_func"] = func
             sc["_env"] = self.env
