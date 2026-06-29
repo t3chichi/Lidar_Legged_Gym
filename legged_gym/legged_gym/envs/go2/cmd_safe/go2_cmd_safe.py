@@ -1093,3 +1093,103 @@ class Go2CmdSafe(Go2):
                 num_lines = len(verts) // 3 // 2
                 self.gym.add_lines(self.viewer, self.envs[env_id], num_lines,
                                    verts_np, colors_np)
+
+
+# ── Symmetry data augmentation ──
+# Distal LiDAR: 128 points x 10-frame history = 1280 points (3840-dim flattened)
+
+
+@torch.no_grad()
+def get_go2_cmd_safe_xsym_obs_act(
+    obs: torch.Tensor = None,
+    actions: torch.Tensor = None,
+    env = None,
+    obs_type: str = "policy",
+    *,
+    sensor_quat: torch.Tensor,
+    sensor_trans: torch.Tensor,
+    proprio_dim: int = 48,
+    proximal_points: int = 256,
+    distal_history_points: int = 1280,
+    distal_history_length: int = 10,
+) -> tuple:
+    """Apply left-right symmetry transformation for Go2 quadruped.
+
+    Mirrors the wrapped 4656-dim observation from CmdSafeHistoryWrapper.
+    LiDAR points are Y-flipped then re-sorted by angular key.
+    DOF mapping: FL(0:3)<->FR(3:6), RL(6:9)<->RR(9:12).
+
+    Keyword-only args (sensor_quat, sensor_trans, etc.) are bound by
+    functools.partial in OnPolicyRunner._setup_symmetry().
+    """
+    from legged_gym.utils.pointcloud_geometry import sort_points_by_angular_key
+
+    device = obs.device if obs is not None else actions.device
+
+    # ── Stage 1: Observation augmentation ──
+    if obs is not None:
+        obs_mirrored = obs.clone()
+
+        # 1a. Scalar sign flips
+        obs_mirrored[:, 1] = -obs[:, 1]   # vy
+        obs_mirrored[:, 3] = -obs[:, 3]   # wx
+        obs_mirrored[:, 5] = -obs[:, 5]   # wz
+        obs_mirrored[:, 7] = -obs[:, 7]   # gy
+        obs_mirrored[:, 10] = -obs[:, 10] # cmd_vy
+        obs_mirrored[:, 11] = -obs[:, 11] # cmd_wz
+
+        # 1b. DOF swaps (3-DOF groups per leg: hip, thigh, calf)
+        # dof_pos: proprio dim [12:24]
+        obs_mirrored[:, 12:15] = obs[:, 15:18]
+        obs_mirrored[:, 15:18] = obs[:, 12:15]
+        obs_mirrored[:, 18:21] = obs[:, 21:24]
+        obs_mirrored[:, 21:24] = obs[:, 18:21]
+        # dof_vel: proprio dim [24:36]
+        obs_mirrored[:, 24:27] = obs[:, 27:30]
+        obs_mirrored[:, 27:30] = obs[:, 24:27]
+        obs_mirrored[:, 30:33] = obs[:, 33:36]
+        obs_mirrored[:, 33:36] = obs[:, 30:33]
+        # prev actions: proprio dim [36:48]
+        obs_mirrored[:, 36:39] = obs[:, 39:42]
+        obs_mirrored[:, 39:42] = obs[:, 36:39]
+        obs_mirrored[:, 42:45] = obs[:, 45:48]
+        obs_mirrored[:, 45:48] = obs[:, 42:45]
+
+        # 1c. Proximal LiDAR: Y-flip + angular-key re-sort
+        prox_start = proprio_dim
+        prox_end = prox_start + proximal_points * 3
+        prox_flat = obs_mirrored[:, prox_start:prox_end]
+        prox_pts = prox_flat.reshape(-1, proximal_points, 3)
+        prox_pts[:, :, 1] = -prox_pts[:, :, 1]  # flip Y
+        prox_sorted = sort_points_by_angular_key(
+            prox_pts, sensor_quat, sensor_trans,
+        )
+        obs_mirrored[:, prox_start:prox_end] = prox_sorted.reshape_as(prox_flat)
+
+        # 1d. Distal LiDAR: Y-flip + angular-key re-sort
+        dist_flat = obs_mirrored[:, prox_end:]
+        dist_pts = dist_flat.reshape(-1, distal_history_points, 3)
+        dist_pts[:, :, 1] = -dist_pts[:, :, 1]  # flip Y
+        dist_sorted = sort_points_by_angular_key(
+            dist_pts, sensor_quat, sensor_trans,
+        )
+        obs_mirrored[:, prox_end:] = dist_sorted.reshape_as(dist_flat)
+
+        obs_augmented = torch.cat([obs, obs_mirrored], dim=0)
+    else:
+        obs_augmented = None
+
+    # ── Stage 2: Action augmentation ──
+    if actions is not None:
+        acts_mirrored = actions.clone()
+        # FL <-> FR
+        acts_mirrored[:, 0:3] = actions[:, 3:6]
+        acts_mirrored[:, 3:6] = actions[:, 0:3]
+        # RL <-> RR
+        acts_mirrored[:, 6:9] = actions[:, 9:12]
+        acts_mirrored[:, 9:12] = actions[:, 6:9]
+        actions_augmented = torch.cat([actions, acts_mirrored], dim=0)
+    else:
+        actions_augmented = None
+
+    return obs_augmented, actions_augmented
