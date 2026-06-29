@@ -310,8 +310,8 @@ class OnPolicyRunner:
             proprio_dim = int(p_cfg.get("proprio_obs_dim", 48))
 
             func = partial(func,
-                sensor_quat=self.env._sensor_offset_quat,
-                sensor_trans=self.env._sensor_translation,
+                sensor_quat=self.env._sensor_offset_quat[0:1],
+                sensor_trans=self.env._sensor_translation[0:1],
                 proprio_dim=proprio_dim,
                 proximal_points=proximal_points,
                 distal_history_points=distal_history_points,
