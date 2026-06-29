@@ -1112,6 +1112,8 @@ def get_go2_cmd_safe_xsym_obs_act(
     proximal_points: int = 256,
     distal_history_points: int = 1280,
     distal_history_length: int = 10,
+    height_grid_x_count: int = 17,
+    height_grid_y_count: int = 11,
 ) -> tuple:
     """Apply left-right symmetry transformation for Go2 quadruped.
 
@@ -1128,6 +1130,22 @@ def get_go2_cmd_safe_xsym_obs_act(
 
     # ── Stage 1: Observation augmentation ──
     if obs is not None:
+        # ── Critic observation: height grid, mirror Y axis only ──
+        if obs_type == "critic":
+            # Height grid layout: [B, x_count * y_count] with x as outer loop.
+            # Mirror flips the y axis: each row reversed within itself.
+            obs_mirrored = torch.flip(
+                obs.reshape(-1, height_grid_x_count, height_grid_y_count),
+                dims=[2],
+            ).reshape_as(obs)
+            obs_augmented = torch.cat([obs, obs_mirrored], dim=0)
+            if actions is not None:
+                actions_augmented = torch.cat([actions, actions.clone()], dim=0)
+            else:
+                actions_augmented = None
+            return obs_augmented, actions_augmented
+
+        # ── Policy observation: full proprio + LiDAR mirror ──
         obs_mirrored = obs.clone()
 
         # 1a. Scalar sign flips
