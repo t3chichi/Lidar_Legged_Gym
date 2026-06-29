@@ -379,7 +379,7 @@ class PPO:
                         num_aug = int(obs_batch.shape[0] / original_batch_size)
 
                     # actions predicted by the actor for symmetrically-augmented observations
-                    mean_actions_batch = self.policy.act_inference(obs_batch.detach())
+                    mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
 
                     # compute the symmetrically augmented actions
                     # note: we are assuming the first augmentation is the original one.
