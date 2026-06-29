@@ -212,8 +212,6 @@ class TestNumericalStability:
 class TestCriticObs:
     """Verify critic observation (height grid) symmetry."""
 
-    import torch
-
     def test_critic_grid_shape(self):
         """Obs type critic should double the batch and preserve obs dim."""
         func = _make_func()
