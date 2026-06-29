@@ -49,7 +49,8 @@ class CmdSafeHistoryWrapper:
         if sensor_offset_quat is not None:
             self._sensor_quat = sensor_offset_quat[0:1].to(device)
         else:
-            self._sensor_quat = None
+            self._sensor_quat = torch.zeros(1, 4, device=device)
+            self._sensor_quat[0, 3] = 1.0  # identity quaternion
         if sensor_translation is not None:
             self._sensor_t = sensor_translation[0:1].to(device)
         else:
