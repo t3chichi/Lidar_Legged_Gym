@@ -11,8 +11,6 @@ import torch
 
 from legged_gym.utils.pointcloud_geometry import (
     cartesian_to_spherical,
-    quaternion_apply,
-    quaternion_conjugate,
     sort_points_by_angular_key,
     to_sensor_frame,
 )
@@ -49,10 +47,8 @@ class CmdSafeHistoryWrapper:
         self.device = device
 
         if sensor_offset_quat is not None:
-            self._sensor_conj = quaternion_conjugate(sensor_offset_quat[0:1]).to(device)
             self._sensor_quat = sensor_offset_quat[0:1].to(device)
         else:
-            self._sensor_conj = None
             self._sensor_quat = None
         if sensor_translation is not None:
             self._sensor_t = sensor_translation[0:1].to(device)
@@ -68,13 +64,6 @@ class CmdSafeHistoryWrapper:
     @property
     def wrapped_obs_dim(self) -> int:
         return self.proprio_dim + self.proximal_points * 3 + self.distal_history_length * self.distal_points * 3
-
-    def _cart_to_sphere(self, points_sensor: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        x, y, z = points_sensor[..., 0], points_sensor[..., 1], points_sensor[..., 2]
-        r = torch.norm(points_sensor, dim=-1)
-        azimuth = torch.atan2(y, x)
-        phi = torch.asin(z / (r + 1e-9))
-        return r, azimuth, phi
 
     def _to_sensor_frame(self, points_base: torch.Tensor) -> torch.Tensor:
         return to_sensor_frame(points_base, self._sensor_quat, self._sensor_t)
