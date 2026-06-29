@@ -207,3 +207,48 @@ class TestNumericalStability:
         obs[:, :48] = torch.randn(4, 48)
         obs_aug, _ = func(obs=obs, actions=None)
         assert not torch.isnan(obs_aug).any()
+
+
+class TestCriticObs:
+    """Verify critic observation (height grid) symmetry."""
+
+    import torch
+
+    def test_critic_grid_shape(self):
+        """Obs type critic should double the batch and preserve obs dim."""
+        func = _make_func()
+        obs = torch.randn(4, 187)  # 17x11 height grid
+        obs_aug, act_aug = func(obs=obs, actions=None, obs_type="critic")
+        assert obs_aug.shape == (8, 187)
+        assert act_aug is None
+
+    def test_critic_grid_y_flip(self):
+        """Each row of the height grid should be Y-reversed."""
+        func = _make_func()
+        obs = torch.zeros(2, 187)
+        y_count = 11
+        for x in range(17):
+            for y in range(y_count):
+                obs[:, x * y_count + y] = float(x * 100 + y)
+        obs_aug, _ = func(obs=obs, actions=None, obs_type="critic")
+        mirrored = obs_aug[2:]
+        for x in range(17):
+            for y in range(y_count):
+                orig_val = obs[0, x * y_count + y].item()
+                mirr_val = mirrored[0, x * y_count + (y_count - 1 - y)].item()
+                assert mirr_val == orig_val, (
+                    f"x={x} y={y}: expected {orig_val}, got {mirr_val}"
+                )
+
+    def test_critic_grid_double_mirror_identity(self):
+        """Double mirror of height grid must be exact identity."""
+        func = _make_func()
+        obs = torch.randn(4, 187)
+        obs_aug, _ = func(obs=obs, actions=None, obs_type="critic")
+        obs_m1 = obs_aug[4:]
+        obs_aug2, _ = func(obs=obs_m1, actions=None, obs_type="critic")
+        obs_m2 = obs_aug2[4:]
+        diff = (obs_m2 - obs).abs()
+        assert diff.max().item() == 0.0, (
+            f"Double mirror not identity, max diff={diff.max().item():.2e}"
+        )
