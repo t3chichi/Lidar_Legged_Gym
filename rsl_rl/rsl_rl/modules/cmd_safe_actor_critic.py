@@ -240,7 +240,7 @@ class CmdSafeActorCritic(nn.Module):
         B, T_prox, P, _ = prox_points.shape
         out = torch.empty(B, T_prox, self.proximal_feature_dim,
                           device=prox_points.device, dtype=prox_points.dtype)
-        chunk_size = 128
+        chunk_size = 64
         for start in range(0, B, chunk_size):
             end = min(start + chunk_size, B)
             chunk = prox_points[start:end]
@@ -254,7 +254,7 @@ class CmdSafeActorCritic(nn.Module):
         B, T_dist, D, _ = dist_points.shape
         out = torch.empty(B, T_dist, self.distal_feature_dim,
                           device=dist_points.device, dtype=dist_points.dtype)
-        chunk_size = 128
+        chunk_size = 64
         for start in range(0, B, chunk_size):
             end = min(start + chunk_size, B)
             chunk = dist_points[start:end]
