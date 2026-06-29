@@ -1138,12 +1138,7 @@ def get_go2_cmd_safe_xsym_obs_act(
                 obs.reshape(-1, height_grid_x_count, height_grid_y_count),
                 dims=[2],
             ).reshape_as(obs)
-            obs_augmented = torch.cat([obs, obs_mirrored], dim=0)
-            if actions is not None:
-                actions_augmented = torch.cat([actions, actions.clone()], dim=0)
-            else:
-                actions_augmented = None
-            return obs_augmented, actions_augmented
+            return torch.cat([obs, obs_mirrored], dim=0), None
 
         # ── Policy observation: full proprio + LiDAR mirror ──
         obs_mirrored = obs.clone()
