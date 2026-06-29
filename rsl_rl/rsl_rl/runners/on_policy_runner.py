@@ -295,18 +295,27 @@ class OnPolicyRunner:
             from rsl_rl.utils import string_to_callable
             sc = self.alg_cfg["symmetry_cfg"]
             func = sc["data_augmentation_func"]
-            # Resolve string path to callable (PPO would do this later,
-            # but we need the callable now to wrap with partial)
             if isinstance(func, str):
                 func = string_to_callable(func)
-            # Bind LiDAR sensor parameters from env (created once, stable lifetime)
+
+            # Read point-cloud dimensions from policy_cfg (same source as
+            # CmdSafeHistoryWrapper) to guarantee the symmetry function
+            # interprets the flattened obs blob exactly the way the Wrapper
+            # built it.
+            p_cfg = self.policy_cfg
+            proximal_points = int(p_cfg.get("proximal_points", 256))
+            distal_points = int(p_cfg.get("distal_points", 128))
+            distal_history_length = int(p_cfg.get("distal_history_length", 10))
+            distal_history_points = distal_points * distal_history_length
+            proprio_dim = int(p_cfg.get("proprio_obs_dim", 48))
+
             func = partial(func,
                 sensor_quat=self.env._sensor_offset_quat,
                 sensor_trans=self.env._sensor_translation,
-                proprio_dim=48,
-                proximal_points=256,
-                distal_history_points=1280,
-                distal_history_length=10,
+                proprio_dim=proprio_dim,
+                proximal_points=proximal_points,
+                distal_history_points=distal_history_points,
+                distal_history_length=distal_history_length,
             )
             sc["data_augmentation_func"] = func
             sc["_env"] = self.env
