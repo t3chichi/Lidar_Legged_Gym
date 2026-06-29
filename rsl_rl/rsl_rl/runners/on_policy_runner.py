@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import statistics
 import time
+from functools import partial
 import torch
 from typing import Optional, Union
 from collections import deque
@@ -289,10 +290,26 @@ class OnPolicyRunner:
                 self.alg_cfg["rnd_cfg"]["weight"] *= self.env.unwrapped.step_dt
 
     def _setup_symmetry(self):
-        """Setup symmetry if configured."""
+        """Setup symmetry if configured. Binds sensor parameters via functools.partial."""
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:
-            # This is used by the symmetry function for handling different observation terms
-            self.alg_cfg["symmetry_cfg"]["_env"] = self.env
+            from rsl_rl.utils import string_to_callable
+            sc = self.alg_cfg["symmetry_cfg"]
+            func = sc["data_augmentation_func"]
+            # Resolve string path to callable (PPO would do this later,
+            # but we need the callable now to wrap with partial)
+            if isinstance(func, str):
+                func = string_to_callable(func)
+            # Bind LiDAR sensor parameters from env (created once, stable lifetime)
+            func = partial(func,
+                sensor_quat=self.env._sensor_offset_quat,
+                sensor_trans=self.env._sensor_translation,
+                proprio_dim=48,
+                proximal_points=256,
+                distal_history_points=1280,
+                distal_history_length=10,
+            )
+            sc["data_augmentation_func"] = func
+            sc["_env"] = self.env
 
     def _initialize_algorithm(self, policy):
         """Initialize the algorithm."""
