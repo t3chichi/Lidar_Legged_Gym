@@ -259,7 +259,7 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
         critic_hidden_dims = [1024, 512, 256, 128]
         proximal_points = PD_PROXIMAL_POINTS          # 256
         distal_history_length = DIST_HISTORY_LENGTH    # 10
-        distal_points = PD_DISTAL_POINTS              # 128
+        distal_points = PD_DISTAL_POINTS              # 64
         proximal_feature_dim = PD_PROXIMAL_FEATURE_DIM  # 187
         distal_feature_dim = PD_DISTAL_FEATURE_DIM    # 64
         proprio_obs_dim = PD_PROPRIO_DIM              # 48

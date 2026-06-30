@@ -1,7 +1,7 @@
 """CmdSafeActorCritic  零初始化双 GRU 感知 Actor-Critic。
 
 近端 GRU: input=3, hidden=187, 每帧零初始化, seq_len=256。
-远端 GRU: input=3, hidden=64, 每帧零初始化, seq_len=1280。
+远端 GRU: input=3, hidden=64, 每帧零初始化, seq_len=640。
 height_supervisor: Linear(187, 187) 近端特征   高度图, 辅助 MSE 监督。
 """
 
@@ -48,12 +48,12 @@ class CmdSafeActorCritic(nn.Module):
     Observation layout (from CmdSafeHistoryWrapper):
       - proprio (48 dims)
       - proximal points (256   3 = 768 dims, sorted by spherical key)
-      - distal points (1280   3 = 3840 dims, 10-frame concatenated + globally sorted)
-      Total: 48 + 768 + 3840 = 4656
+      - distal points (640 × 3 = 1920 dims, 10-frame concatenated + globally sorted)
+      Total: 48 + 768 + 1920 = 2736
 
     Architecture:
       Proximal: (B, 256, 3)   GRU(3  187, zero-init)   h_n (B, 187)
-      Distal:   (B, 1280, 3)   GRU(3  64, zero-init)    h_n (B, 64)
+      Distal:   (B, 640, 3)   GRU(3  64, zero-init)    h_n (B, 64)
       Actor:    (B, 48+187+64=299)   MLP   12
       Critic:   (B, 299)   MLP   1
       Aux:      Linear(187, 187)   MSE with privileged heights
@@ -73,7 +73,7 @@ class CmdSafeActorCritic(nn.Module):
         noise_std_type: str = "scalar",
         proximal_points: int = 256,
         distal_history_length: int = 10,
-        distal_points: int = 128,
+        distal_points: int = 64,
         proximal_feature_dim: int = 187,
         distal_feature_dim: int = 64,
         proprio_obs_dim: int = 48,

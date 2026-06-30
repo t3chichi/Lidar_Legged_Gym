@@ -1,5 +1,10 @@
 # legged_gym/legged_gym/tests/test_go2_xsym.py
-"""Tests for get_go2_cmd_safe_xsym_obs_act symmetry function."""
+"""Tests for get_go2_cmd_safe_xsym_obs_act symmetry function.
+
+All dimension parameters are read from the production config file
+(go2_cmd_safe_config.py) to guarantee the tests match the actual training
+observation layout produced by CmdSafeHistoryWrapper.
+"""
 
 # isaacgym must be imported before torch (it guards against torch being
 # already loaded).  We import it at the top so that subsequent module-level
@@ -35,15 +40,48 @@ def _load_sym_func():
 _mod = _load_sym_func()
 _raw_func = _mod.get_go2_cmd_safe_xsym_obs_act
 
+# ── Read production parameters from the actual config ──
+# _load_sym_func() already triggered the full legged_gym package import
+# chain, so we can safely import the config module here.
+from legged_gym.envs.go2.cmd_safe.go2_cmd_safe_config import (  # noqa: E402
+    PD_PROPRIO_DIM, PD_PROXIMAL_POINTS, PD_DISTAL_POINTS,
+    DIST_HISTORY_LENGTH, MEASURED_GRID_X_COUNT, MEASURED_GRID_Y_COUNT,
+    PD_PRIV_HEIGHT_DIM,
+)
+
+# Production values – any change to the config constants above will
+# automatically flow into these and into every test that uses them.
+PROD_PROPRIO_DIM = PD_PROPRIO_DIM
+PROD_PROXIMAL_POINTS = PD_PROXIMAL_POINTS
+PROD_DISTAL_POINTS = PD_DISTAL_POINTS
+PROD_DISTAL_HISTORY_LENGTH = DIST_HISTORY_LENGTH
+PROD_DISTAL_HISTORY_POINTS = PD_DISTAL_POINTS * DIST_HISTORY_LENGTH
+PROD_GRID_X = MEASURED_GRID_X_COUNT
+PROD_GRID_Y = MEASURED_GRID_Y_COUNT
+PROD_POLICY_OBS_DIM = (
+    PROD_PROPRIO_DIM
+    + PROD_PROXIMAL_POINTS * 3
+    + PROD_DISTAL_HISTORY_POINTS * 3
+)
+PROD_CRITIC_OBS_DIM = PD_PRIV_HEIGHT_DIM  # x_count * y_count
+
 
 def _make_func(device="cpu"):
-    """Create a partial-bound symmetry function with identity sensor params."""
+    """Create a partial-bound symmetry function with identity sensor params.
+
+    All dimension parameters are bound to the production config values so
+    that the tests validate exactly what the training loop sees.
+    """
     return partial(
         _raw_func,
         sensor_quat=torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=device),
         sensor_trans=torch.zeros(1, 3, device=device),
-        proprio_dim=48, proximal_points=256,
-        distal_history_points=1280, distal_history_length=10,
+        proprio_dim=PROD_PROPRIO_DIM,
+        proximal_points=PROD_PROXIMAL_POINTS,
+        distal_history_points=PROD_DISTAL_HISTORY_POINTS,
+        distal_history_length=PROD_DISTAL_HISTORY_LENGTH,
+        height_grid_x_count=PROD_GRID_X,
+        height_grid_y_count=PROD_GRID_Y,
     )
 
 
@@ -52,37 +90,37 @@ class TestScalarMirror:
 
     def test_vy_sign_flip(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         torch.testing.assert_close(obs_aug[4:, 1], -obs[:, 1])
 
     def test_wx_sign_flip(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         torch.testing.assert_close(obs_aug[4:, 3], -obs[:, 3])
 
     def test_wz_sign_flip(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         torch.testing.assert_close(obs_aug[4:, 5], -obs[:, 5])
 
     def test_gy_sign_flip(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         torch.testing.assert_close(obs_aug[4:, 7], -obs[:, 7])
 
     def test_cmd_vy_sign_flip(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         torch.testing.assert_close(obs_aug[4:, 10], -obs[:, 10])
 
     def test_cmd_wz_sign_flip(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         torch.testing.assert_close(obs_aug[4:, 11], -obs[:, 11])
 
@@ -92,7 +130,7 @@ class TestDOFSwap:
 
     def test_dof_pos_fl_fr(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs[:, 12:15] = 100.0  # FL
         obs[:, 15:18] = 200.0  # FR
         obs_aug, _ = func(obs=obs, actions=None)
@@ -101,7 +139,7 @@ class TestDOFSwap:
 
     def test_dof_pos_rl_rr(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs[:, 18:21] = 300.0  # RL
         obs[:, 21:24] = 400.0  # RR
         obs_aug, _ = func(obs=obs, actions=None)
@@ -125,7 +163,7 @@ class TestActionMirror:
 class TestInvariants:
     def test_batch_doubles(self):
         func = _make_func()
-        obs = torch.randn(8, 4656)
+        obs = torch.randn(8, PROD_POLICY_OBS_DIM)
         actions = torch.randn(8, 12)
         obs_aug, act_aug = func(obs=obs, actions=actions)
         assert obs_aug.shape[0] == 16
@@ -133,9 +171,9 @@ class TestInvariants:
 
     def test_obs_only_mode(self):
         func = _make_func()
-        obs = torch.randn(4, 4656)
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
         obs_aug, act_aug = func(obs=obs, actions=None)
-        assert obs_aug.shape == (8, 4656)
+        assert obs_aug.shape == (8, PROD_POLICY_OBS_DIM)
         assert act_aug is None
 
     def test_actions_only_mode(self):
@@ -163,9 +201,9 @@ class TestInvariants:
         sort_fn = pgeo.sort_points_by_angular_key
 
         torch.manual_seed(42)
-        proprio = torch.randn(4, 48)
-        prox_raw = torch.randn(4, 256, 3)
-        dist_raw = torch.randn(4, 1280, 3)
+        proprio = torch.randn(4, PROD_PROPRIO_DIM)
+        prox_raw = torch.randn(4, PROD_PROXIMAL_POINTS, 3)
+        dist_raw = torch.randn(4, PROD_DISTAL_HISTORY_POINTS, 3)
         q = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device='cpu')
         t = torch.zeros(1, 3)
         prox_sorted = sort_fn(prox_raw, q, t)
@@ -195,7 +233,7 @@ class TestNumericalStability:
     def test_large_batch_no_nan(self):
         func = _make_func()
         torch.manual_seed(42)
-        obs = torch.randn(2048, 4656)
+        obs = torch.randn(2048, PROD_POLICY_OBS_DIM)
         actions = torch.randn(2048, 12)
         obs_aug, act_aug = func(obs=obs, actions=actions)
         assert not torch.isnan(obs_aug).any()
@@ -203,8 +241,8 @@ class TestNumericalStability:
 
     def test_zero_lidar_points(self):
         func = _make_func()
-        obs = torch.zeros(4, 4656)
-        obs[:, :48] = torch.randn(4, 48)
+        obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
+        obs[:, :PROD_PROPRIO_DIM] = torch.randn(4, PROD_PROPRIO_DIM)
         obs_aug, _ = func(obs=obs, actions=None)
         assert not torch.isnan(obs_aug).any()
 
@@ -215,25 +253,24 @@ class TestCriticObs:
     def test_critic_grid_shape(self):
         """Obs type critic should double the batch and preserve obs dim."""
         func = _make_func()
-        obs = torch.randn(4, 187)  # 17x11 height grid
+        obs = torch.randn(4, PROD_CRITIC_OBS_DIM)
         obs_aug, act_aug = func(obs=obs, actions=None, obs_type="critic")
-        assert obs_aug.shape == (8, 187)
+        assert obs_aug.shape == (8, PROD_CRITIC_OBS_DIM)
         assert act_aug is None
 
     def test_critic_grid_y_flip(self):
         """Each row of the height grid should be Y-reversed."""
         func = _make_func()
-        obs = torch.zeros(2, 187)
-        y_count = 11
-        for x in range(17):
-            for y in range(y_count):
-                obs[:, x * y_count + y] = float(x * 100 + y)
+        obs = torch.zeros(2, PROD_CRITIC_OBS_DIM)
+        for x in range(PROD_GRID_X):
+            for y in range(PROD_GRID_Y):
+                obs[:, x * PROD_GRID_Y + y] = float(x * 100 + y)
         obs_aug, _ = func(obs=obs, actions=None, obs_type="critic")
         mirrored = obs_aug[2:]
-        for x in range(17):
-            for y in range(y_count):
-                orig_val = obs[0, x * y_count + y].item()
-                mirr_val = mirrored[0, x * y_count + (y_count - 1 - y)].item()
+        for x in range(PROD_GRID_X):
+            for y in range(PROD_GRID_Y):
+                orig_val = obs[0, x * PROD_GRID_Y + y].item()
+                mirr_val = mirrored[0, x * PROD_GRID_Y + (PROD_GRID_Y - 1 - y)].item()
                 assert mirr_val == orig_val, (
                     f"x={x} y={y}: expected {orig_val}, got {mirr_val}"
                 )
@@ -241,7 +278,7 @@ class TestCriticObs:
     def test_critic_grid_double_mirror_identity(self):
         """Double mirror of height grid must be exact identity."""
         func = _make_func()
-        obs = torch.randn(4, 187)
+        obs = torch.randn(4, PROD_CRITIC_OBS_DIM)
         obs_aug, _ = func(obs=obs, actions=None, obs_type="critic")
         obs_m1 = obs_aug[4:]
         obs_aug2, _ = func(obs=obs_m1, actions=None, obs_type="critic")

@@ -136,7 +136,7 @@ class Go2CmdSafe(Go2):
         sin_a = torch.sin(angles)
         self._body_radius = a * b / torch.sqrt(
             b * b * cos_a * cos_a + a * a * sin_a * sin_a
-        )  # (36,)
+        )  # (36,)  椭圆极坐标半径
 
         self._sector_centers = torch.stack(
             (torch.cos(angles), torch.sin(angles)), dim=1,
@@ -1096,7 +1096,7 @@ class Go2CmdSafe(Go2):
 
 
 # ── Symmetry data augmentation ──
-# Distal LiDAR: 128 points x 10-frame history = 1280 points (3840-dim flattened)
+# Distal LiDAR: 64 points x 10-frame history = 640 points (1920-dim flattened)
 
 
 @torch.no_grad()
@@ -1110,14 +1110,14 @@ def get_go2_cmd_safe_xsym_obs_act(
     sensor_trans: torch.Tensor,
     proprio_dim: int = 48,
     proximal_points: int = 256,
-    distal_history_points: int = 1280,
+    distal_history_points: int = 640,
     distal_history_length: int = 10,
     height_grid_x_count: int = 17,
     height_grid_y_count: int = 11,
 ) -> tuple:
     """Apply left-right symmetry transformation for Go2 quadruped.
 
-    Mirrors the wrapped 4656-dim observation from CmdSafeHistoryWrapper.
+    Mirrors the wrapped 2736-dim observation from CmdSafeHistoryWrapper.
     LiDAR points are Y-flipped then re-sorted by angular key.
     DOF mapping: FL(0:3)<->FR(3:6), RL(6:9)<->RR(9:12).
 
