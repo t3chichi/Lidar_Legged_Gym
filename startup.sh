@@ -4,7 +4,7 @@ li_leggym() {
     conda activate li_leggym
     cd $LI_LEGGYM_ROOT
     pgrep -f "tensorboard.*$LI_LEGGYM_ROOT" >/dev/null || {
-        gnome-terminal -- bash -c "tensorboard --logdir=$LI_LEGGYM_ROOT/legged_gym/logs --bind_all; exec bash" &
+        gnome-terminal -- bash -c "tensorboard --logdir=$LI_LEGGYM_ROOT/legged_gym/logs/go2_cmd_safe --bind_all; exec bash" &
         disown
     }
 }
