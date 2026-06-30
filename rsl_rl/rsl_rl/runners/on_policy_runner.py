@@ -309,6 +309,20 @@ class OnPolicyRunner:
             distal_history_points = distal_points * distal_history_length
             proprio_dim = int(p_cfg.get("proprio_obs_dim", 48))
 
+            # ── Diagnostic: verify mirror augmentation dimensions ──
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning(
+                "[SYMMETRY] distal_points=%s distal_history_length=%s → distal_history_points=%s | "
+                "proprio_dim=%s proximal_points=%s | grid=%s×%s | "
+                "expected wrapped obs dim=%s",
+                distal_points, distal_history_length, distal_history_points,
+                proprio_dim, proximal_points,
+                int(getattr(self.env.cfg.terrain, 'measured_grid_x_count', 17)),
+                int(getattr(self.env.cfg.terrain, 'measured_grid_y_count', 11)),
+                proprio_dim + proximal_points * 3 + distal_history_points * 3,
+            )
+
             func = partial(func,
                 sensor_quat=self.env._sensor_offset_quat[0:1],
                 sensor_trans=self.env._sensor_translation[0:1],

@@ -264,7 +264,7 @@ class PPO:
                     obs=obs_batch, actions=actions_batch, env=self.symmetry["_env"], obs_type="policy"
                 )
                 critic_obs_batch, _ = data_augmentation_func(
-                    obs=critic_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="critic"
+                    obs=critic_obs_batch, actions=None, env=self.symmetry["_env"], obs_type="auxiliary"
                 )
                 # compute number of augmentations per sample
                 num_aug = int(obs_batch.shape[0] / original_batch_size)

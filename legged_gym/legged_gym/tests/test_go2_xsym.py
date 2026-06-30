@@ -247,25 +247,30 @@ class TestNumericalStability:
         assert not torch.isnan(obs_aug).any()
 
 
-class TestCriticObs:
-    """Verify critic observation (height grid) symmetry."""
+class TestAuxiliaryObs:
+    """Verify auxiliary observation (height grid) symmetry.
 
-    def test_critic_grid_shape(self):
-        """Obs type critic should double the batch and preserve obs dim."""
+    The auxiliary observation (187-dim measured heights) is used for
+    privileged height supervision (MSE loss), NOT for the critic value
+    function.  The critic shares the actor's latent features.
+    """
+
+    def test_auxiliary_grid_shape(self):
+        """Obs type auxiliary should double the batch and preserve obs dim."""
         func = _make_func()
         obs = torch.randn(4, PROD_CRITIC_OBS_DIM)
-        obs_aug, act_aug = func(obs=obs, actions=None, obs_type="critic")
+        obs_aug, act_aug = func(obs=obs, actions=None, obs_type="auxiliary")
         assert obs_aug.shape == (8, PROD_CRITIC_OBS_DIM)
         assert act_aug is None
 
-    def test_critic_grid_y_flip(self):
+    def test_auxiliary_grid_y_flip(self):
         """Each row of the height grid should be Y-reversed."""
         func = _make_func()
         obs = torch.zeros(2, PROD_CRITIC_OBS_DIM)
         for x in range(PROD_GRID_X):
             for y in range(PROD_GRID_Y):
                 obs[:, x * PROD_GRID_Y + y] = float(x * 100 + y)
-        obs_aug, _ = func(obs=obs, actions=None, obs_type="critic")
+        obs_aug, _ = func(obs=obs, actions=None, obs_type="auxiliary")
         mirrored = obs_aug[2:]
         for x in range(PROD_GRID_X):
             for y in range(PROD_GRID_Y):
@@ -275,13 +280,13 @@ class TestCriticObs:
                     f"x={x} y={y}: expected {orig_val}, got {mirr_val}"
                 )
 
-    def test_critic_grid_double_mirror_identity(self):
+    def test_auxiliary_grid_double_mirror_identity(self):
         """Double mirror of height grid must be exact identity."""
         func = _make_func()
         obs = torch.randn(4, PROD_CRITIC_OBS_DIM)
-        obs_aug, _ = func(obs=obs, actions=None, obs_type="critic")
+        obs_aug, _ = func(obs=obs, actions=None, obs_type="auxiliary")
         obs_m1 = obs_aug[4:]
-        obs_aug2, _ = func(obs=obs_m1, actions=None, obs_type="critic")
+        obs_aug2, _ = func(obs=obs_m1, actions=None, obs_type="auxiliary")
         obs_m2 = obs_aug2[4:]
         diff = (obs_m2 - obs).abs()
         assert diff.max().item() == 0.0, (

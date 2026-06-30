@@ -1104,7 +1104,7 @@ def get_go2_cmd_safe_xsym_obs_act(
     obs: torch.Tensor = None,
     actions: torch.Tensor = None,
     env = None,
-    obs_type: str = "policy",
+    obs_type: str = "policy",  # "policy" | "auxiliary" (privileged height grid)
     *,
     sensor_quat: torch.Tensor,
     sensor_trans: torch.Tensor,
@@ -1121,6 +1121,9 @@ def get_go2_cmd_safe_xsym_obs_act(
     LiDAR points are Y-flipped then re-sorted by angular key.
     DOF mapping: FL(0:3)<->FR(3:6), RL(6:9)<->RR(9:12).
 
+    obs_type="policy"   → full proprio + LiDAR mirror (2736 dims)
+    obs_type="auxiliary" → height grid Y-flip only (187 dims, for auxiliary supervision)
+
     Keyword-only args (sensor_quat, sensor_trans, etc.) are bound by
     functools.partial in OnPolicyRunner._setup_symmetry().
     """
@@ -1131,7 +1134,7 @@ def get_go2_cmd_safe_xsym_obs_act(
     # ── Stage 1: Observation augmentation ──
     if obs is not None:
         # ── Critic observation: height grid, mirror Y axis only ──
-        if obs_type == "critic":
+        if obs_type == "auxiliary":
             # Height grid layout: [B, x_count * y_count] with x as outer loop.
             # Mirror flips the y axis: each row reversed within itself.
             obs_mirrored = torch.flip(
@@ -1142,6 +1145,17 @@ def get_go2_cmd_safe_xsym_obs_act(
 
         # ── Policy observation: full proprio + LiDAR mirror ──
         obs_mirrored = obs.clone()
+
+        # ── Shape assertions: catch dimension mismatches early ──
+        prox_len = proximal_points * 3
+        dist_len = distal_history_points * 3
+        expected_len = proprio_dim + prox_len + dist_len
+        if obs.shape[-1] != expected_len:
+            raise ValueError(
+                f"[SYMMETRY] Obs dim mismatch: got {obs.shape[-1]}, "
+                f"expected {expected_len} "
+                f"(proprio={proprio_dim} + prox={prox_len} + distal={dist_len})"
+            )
 
         # 1a. Scalar sign flips
         obs_mirrored[:, 1] = -obs[:, 1]   # vy
