@@ -264,6 +264,84 @@ class TestNumericalStability:
         assert not torch.isnan(obs_aug).any()
 
 
+class TestProductionSensor:
+    """Double-mirror identity with production sensor quaternion (pitch=π)."""
+
+    def test_double_mirror_with_production_sensor(self):
+        """Identity holds with the real sensor orientation."""
+        import math
+        pitch = math.pi
+        sq, cq = math.sin(pitch / 2), math.cos(pitch / 2)
+        sensor_q = torch.tensor([[0.0, sq, 0.0, cq]])  # [0, 1, 0, 0]
+        sensor_t = torch.zeros(1, 3)
+        func = partial(
+            _raw_func,
+            sensor_quat=sensor_q, sensor_trans=sensor_t,
+            proprio_dim=PROD_PROPRIO_DIM, proximal_points=PROD_PROXIMAL_POINTS,
+            distal_history_points=PROD_DISTAL_HISTORY_POINTS,
+            distal_history_length=PROD_DISTAL_HISTORY_LENGTH,
+            height_grid_x_count=PROD_GRID_X, height_grid_y_count=PROD_GRID_Y,
+            default_dof_pos=GO2_DEFAULT_DOF_POS,
+            dof_obs_scale=1.0, action_scale=0.3,
+        )
+        # Load sort_points_by_angular_key
+        mod_path = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "utils", "pointcloud_geometry.py"))
+        spec = importlib.util.spec_from_file_location(
+            "pgeo_prod", mod_path, submodule_search_locations=[])
+        pgeo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pgeo)
+        sort_fn = pgeo.sort_points_by_angular_key
+
+        torch.manual_seed(42)
+        proprio = torch.randn(4, PROD_PROPRIO_DIM)
+        pr = torch.randn(4, PROD_PROXIMAL_POINTS, 3)
+        dr = torch.randn(4, PROD_DISTAL_HISTORY_POINTS, 3)
+        ps = sort_fn(pr, sensor_q, sensor_t)
+        ds = sort_fn(dr, sensor_q, sensor_t)
+        obs = torch.cat([proprio, ps.reshape(4, -1), ds.reshape(4, -1)], dim=1)
+
+        oa, _ = func(obs=obs, actions=None)
+        om = oa[4:]
+        oa2, _ = func(obs=om, actions=None)
+        om2 = oa2[4:]
+        diff = (om2 - obs).abs().max().item()
+        assert diff < 1e-5, f"Prod sensor double mirror failed, diff={diff:.2e}"
+
+
+class TestFallbackNoDefaults:
+    """Fallback path when default_dof_pos is not bound (no hip correction)."""
+
+    def _make_fallback_func(self):
+        return partial(
+            _raw_func,
+            sensor_quat=torch.tensor([[0.0, 0.0, 0.0, 1.0]]),
+            sensor_trans=torch.zeros(1, 3),
+            proprio_dim=PROD_PROPRIO_DIM,
+            proximal_points=PROD_PROXIMAL_POINTS,
+            distal_history_points=PROD_DISTAL_HISTORY_POINTS,
+            distal_history_length=PROD_DISTAL_HISTORY_LENGTH,
+            height_grid_x_count=PROD_GRID_X,
+            height_grid_y_count=PROD_GRID_Y,
+            # default_dof_pos NOT bound — exercises the else branch
+        )
+
+    def test_fallback_direct_swap_no_crash(self):
+        """Without default_dof_pos, the function should not crash."""
+        func = self._make_fallback_func()
+        obs = torch.randn(4, PROD_POLICY_OBS_DIM)
+        obs_aug, _ = func(obs=obs, actions=None)
+        assert obs_aug.shape == (8, PROD_POLICY_OBS_DIM)
+
+    def test_fallback_actions_no_crash(self):
+        """Without default_dof_pos, action mirror should not crash."""
+        func = self._make_fallback_func()
+        actions = torch.randn(4, 12)
+        _, aug = func(obs=None, actions=actions)
+        assert aug.shape == (8, 12)
+
+
 class TestAuxiliaryObs:
     """Verify auxiliary observation (height grid) symmetry.
 
