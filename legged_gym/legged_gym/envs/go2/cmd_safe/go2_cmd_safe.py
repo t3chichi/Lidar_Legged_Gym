@@ -1184,11 +1184,18 @@ def get_go2_cmd_safe_xsym_obs_act(
             obs_mirrored[:, 15:18] = obs[:, 12:15]
             obs_mirrored[:, 18:21] = obs[:, 21:24]
             obs_mirrored[:, 21:24] = obs[:, 18:21]
-        # dof_vel: proprio dim [24:36] (no correction — velocity symmetric)
-        obs_mirrored[:, 24:27] = obs[:, 27:30]
-        obs_mirrored[:, 27:30] = obs[:, 24:27]
-        obs_mirrored[:, 30:33] = obs[:, 33:36]
-        obs_mirrored[:, 33:36] = obs[:, 30:33]
+        # dof_vel: proprio dim [24:36]
+        # Hip velocities need sign flip: FL/RL hip axis=[1,0,0] at +Y origin,
+        # FR/RR hip axis=[1,0,0] at -Y origin → same rotation = opposite leg motion
+        obs_mirrored[:, 24:27] = obs[:, 27:30]  # FL vel ← FR vel
+        obs_mirrored[:, 27:30] = obs[:, 24:27]  # FR vel ← FL vel
+        obs_mirrored[:, 30:33] = obs[:, 33:36]  # RL vel ← RR vel
+        obs_mirrored[:, 33:36] = obs[:, 30:33]  # RR vel ← RL vel
+        # Negate hip velocities (indices 0,3,6,9 in each group → dims 24,27,30,33)
+        obs_mirrored[:, 24] = -obs_mirrored[:, 24]
+        obs_mirrored[:, 27] = -obs_mirrored[:, 27]
+        obs_mirrored[:, 30] = -obs_mirrored[:, 30]
+        obs_mirrored[:, 33] = -obs_mirrored[:, 33]
         # prev actions: proprio dim [36:48] — account for asymmetric hip defaults
         if default_dof_pos is not None:
             acts_raw = obs[:, 36:48].clone()                     # (B, 12)

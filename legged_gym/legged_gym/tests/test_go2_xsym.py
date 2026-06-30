@@ -346,6 +346,32 @@ class TestHipAsymmetry:
         torch.testing.assert_close(aug[4:, 3], torch.full((4,), 1.1666666666666667))
         # Old bug produced 0.5 (direct copy)
 
+    def test_dof_vel_hip_sign_flip(self):
+        """Hip dof_vel should be negated when swapping FL↔FR."""
+        func = _make_func()
+        obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
+        # FL hip vel = +1.0 → FR should get -1.0 (mirrored axis)
+        obs[:, 24] = 1.0   # FL hip vel
+        obs[:, 27] = 0.5   # FR hip vel
+        obs_aug, _ = func(obs=obs, actions=None)
+        mirrored = obs_aug[4:]
+        # FL hip vel ← FR hip vel, sign flipped: -0.5
+        torch.testing.assert_close(mirrored[:, 24], torch.full((4,), -0.5))
+        # FR hip vel ← FL hip vel, sign flipped: -1.0
+        torch.testing.assert_close(mirrored[:, 27], torch.full((4,), -1.0))
+
+    def test_dof_vel_thigh_no_flip(self):
+        """Thigh dof_vel should NOT be negated (symmetric axes)."""
+        func = _make_func()
+        obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
+        obs[:, 25] = 1.0   # FL thigh vel
+        obs[:, 28] = 0.5   # FR thigh vel
+        obs_aug, _ = func(obs=obs, actions=None)
+        mirrored = obs_aug[4:]
+        # Thigh: direct swap, no sign flip
+        torch.testing.assert_close(mirrored[:, 25], torch.full((4,), 0.5))
+        torch.testing.assert_close(mirrored[:, 28], torch.full((4,), 1.0))
+
     def test_thigh_calf_no_correction(self):
         """Thigh and calf defaults are symmetric, no spurous correction."""
         func = _make_func()
