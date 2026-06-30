@@ -65,6 +65,12 @@ PROD_POLICY_OBS_DIM = (
 )
 PROD_CRITIC_OBS_DIM = PD_PRIV_HEIGHT_DIM  # x_count * y_count
 
+# Go2 default joint angles [rad]: FL(hip,thigh,calf), FR(hip,thigh,calf),
+#                                RL(hip,thigh,calf), RR(hip,thigh,calf)
+GO2_DEFAULT_DOF_POS = torch.tensor(
+    [0.1, 0.8, -1.5, -0.1, 0.8, -1.5, 0.1, 0.8, -1.5, -0.1, 0.8, -1.5]
+)
+
 
 def _make_func(device="cpu"):
     """Create a partial-bound symmetry function with identity sensor params.
@@ -82,6 +88,9 @@ def _make_func(device="cpu"):
         distal_history_length=PROD_DISTAL_HISTORY_LENGTH,
         height_grid_x_count=PROD_GRID_X,
         height_grid_y_count=PROD_GRID_Y,
+        default_dof_pos=GO2_DEFAULT_DOF_POS,
+        dof_obs_scale=1.0,
+        action_scale=0.3,
     )
 
 
@@ -134,8 +143,11 @@ class TestDOFSwap:
         obs[:, 12:15] = 100.0  # FL
         obs[:, 15:18] = 200.0  # FR
         obs_aug, _ = func(obs=obs, actions=None)
-        torch.testing.assert_close(obs_aug[4:, 12:15], torch.full((4, 3), 200.0))
-        torch.testing.assert_close(obs_aug[4:, 15:18], torch.full((4, 3), 100.0))
+        # Hip: corrected for asymmetric defaults (±0.2 rad), thigh/calf: direct copy
+        expected_fl = torch.tensor([[199.8, 200.0, 200.0]]).expand(4, 3)
+        expected_fr = torch.tensor([[100.2, 100.0, 100.0]]).expand(4, 3)
+        torch.testing.assert_close(obs_aug[4:, 12:15], expected_fl)
+        torch.testing.assert_close(obs_aug[4:, 15:18], expected_fr)
 
     def test_dof_pos_rl_rr(self):
         func = _make_func()
@@ -143,8 +155,10 @@ class TestDOFSwap:
         obs[:, 18:21] = 300.0  # RL
         obs[:, 21:24] = 400.0  # RR
         obs_aug, _ = func(obs=obs, actions=None)
-        torch.testing.assert_close(obs_aug[4:, 18:21], torch.full((4, 3), 400.0))
-        torch.testing.assert_close(obs_aug[4:, 21:24], torch.full((4, 3), 300.0))
+        expected_rl = torch.tensor([[399.8, 400.0, 400.0]]).expand(4, 3)
+        expected_rr = torch.tensor([[300.2, 300.0, 300.0]]).expand(4, 3)
+        torch.testing.assert_close(obs_aug[4:, 18:21], expected_rl)
+        torch.testing.assert_close(obs_aug[4:, 21:24], expected_rr)
 
 
 class TestActionMirror:
@@ -156,8 +170,11 @@ class TestActionMirror:
         actions[:, 6:9] = torch.tensor([7.0, 8.0, 9.0])
         actions[:, 9:12] = torch.tensor([10.0, 11.0, 12.0])
         _, aug = func(obs=None, actions=actions)
-        torch.testing.assert_close(aug[4:, 0:3], torch.tensor([[4., 5., 6.]]).expand(4, 3))
-        torch.testing.assert_close(aug[4:, 3:6], torch.tensor([[1., 2., 3.]]).expand(4, 3))
+        # Hip: corrected for asymmetric defaults (±0.667 action units), thigh/calf: unchanged
+        exp_fl = torch.tensor([[3.3333333, 5.0, 6.0]]).expand(4, 3)
+        exp_fr = torch.tensor([[1.6666667, 2.0, 3.0]]).expand(4, 3)
+        torch.testing.assert_close(aug[4:, 0:3], exp_fl)
+        torch.testing.assert_close(aug[4:, 3:6], exp_fr)
 
 
 class TestInvariants:
@@ -222,10 +239,10 @@ class TestInvariants:
         obs_aug2, _ = func(obs=obs_m1, actions=None)
         obs_m2 = obs_aug2[4:]
 
-        # Must be EXACT
+        # Must be identity (allow FP epsilon from action_scale division)
         diff = (obs_m2 - obs).abs()
-        assert diff.max().item() == 0.0, (
-            f"Double mirror not exact identity, max diff={diff.max().item():.2e}"
+        assert diff.max().item() < 1e-5, (
+            f"Double mirror not identity, max diff={diff.max().item():.2e}"
         )
 
 
@@ -292,3 +309,51 @@ class TestAuxiliaryObs:
         assert diff.max().item() == 0.0, (
             f"Double mirror not identity, max diff={diff.max().item():.2e}"
         )
+
+
+class TestHipAsymmetry:
+    """Verify hip joint default angle correction in DOF/action swaps.
+
+    Go2 has asymmetric hip defaults: FL/RL = +0.1, FR/RR = -0.1.
+    The symmetry function must account for this when swapping DOFs.
+    """
+
+    def test_dof_pos_hip_correction(self):
+        """Mirrored FL hip obs should subtract the default difference."""
+        func = _make_func()
+        obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
+        # FR_dof = 0.0 → obs[FR_hip] = (0 - (-0.1)) * 1.0 = 0.1
+        obs[:, 15] = 0.1
+        obs_aug, _ = func(obs=obs, actions=None)
+        mirrored = obs_aug[4:]
+        # Correct mirror: FL_hip obs = (FR_dof - FL_default) * scale
+        #   = (0 - 0.1) * 1.0 = -0.1
+        torch.testing.assert_close(mirrored[:, 12], torch.full((4,), -0.1))
+        # Old bug produced +0.1
+        assert not torch.allclose(mirrored[:, 12], torch.full((4,), 0.1)), (
+            "Bug: hip default asymmetry not corrected"
+        )
+
+    def test_action_hip_correction(self):
+        """Mirrored hip action accounts for asymmetric default."""
+        func = _make_func()
+        actions = torch.zeros(4, 12)
+        # FL_hip action = 0.5 → PD target = 0.5*0.3 + 0.1 = 0.25 rad
+        # Mirror FL→FR: FR target should = 0.25 rad
+        #   FR_action * 0.3 + (-0.1) = 0.25 → FR_action = 1.167
+        actions[:, 0] = 0.5
+        _, aug = func(obs=None, actions=actions)
+        torch.testing.assert_close(aug[4:, 3], torch.full((4,), 1.1666666666666667))
+        # Old bug produced 0.5 (direct copy)
+
+    def test_thigh_calf_no_correction(self):
+        """Thigh and calf defaults are symmetric, no spurous correction."""
+        func = _make_func()
+        obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
+        obs[:, 13] = 0.5  # FL_thigh
+        obs[:, 16] = 0.8  # FR_thigh
+        obs_aug, _ = func(obs=obs, actions=None)
+        mirrored = obs_aug[4:]
+        # Symmetric defaults (both 0.8) → direct copy
+        torch.testing.assert_close(mirrored[:, 13], torch.full((4,), 0.8))
+        torch.testing.assert_close(mirrored[:, 16], torch.full((4,), 0.5))

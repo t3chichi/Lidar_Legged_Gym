@@ -1114,6 +1114,9 @@ def get_go2_cmd_safe_xsym_obs_act(
     distal_history_length: int = 10,
     height_grid_x_count: int = 17,
     height_grid_y_count: int = 11,
+    default_dof_pos: torch.Tensor = None,   # (12,) Go2 default joint angles [rad]
+    dof_obs_scale: float = 1.0,              # obs_scales.dof_pos
+    action_scale: float = 0.3,               # control.action_scale
 ) -> tuple:
     """Apply left-right symmetry transformation for Go2 quadruped.
 
@@ -1165,22 +1168,44 @@ def get_go2_cmd_safe_xsym_obs_act(
         obs_mirrored[:, 10] = -obs[:, 10] # cmd_vy
         obs_mirrored[:, 11] = -obs[:, 11] # cmd_wz
 
-        # 1b. DOF swaps (3-DOF groups per leg: hip, thigh, calf)
-        # dof_pos: proprio dim [12:24]
-        obs_mirrored[:, 12:15] = obs[:, 15:18]
-        obs_mirrored[:, 15:18] = obs[:, 12:15]
-        obs_mirrored[:, 18:21] = obs[:, 21:24]
-        obs_mirrored[:, 21:24] = obs[:, 18:21]
-        # dof_vel: proprio dim [24:36]
+        # 1b. DOF pos swaps — account for asymmetric hip defaults
+        # Go2: FL/RL hip default = +0.1, FR/RR hip default = -0.1
+        # Reconstruct raw dof_pos, swap, re-encode with correct defaults
+        if default_dof_pos is not None:
+            dof_raw = obs[:, 12:24] / dof_obs_scale + default_dof_pos  # (B, 12)
+            dof_mirrored_raw = dof_raw.clone()
+            dof_mirrored_raw[:, 0:3] = dof_raw[:, 3:6]    # FL ← FR
+            dof_mirrored_raw[:, 3:6] = dof_raw[:, 0:3]    # FR ← FL
+            dof_mirrored_raw[:, 6:9] = dof_raw[:, 9:12]   # RL ← RR
+            dof_mirrored_raw[:, 9:12] = dof_raw[:, 6:9]   # RR ← RL
+            obs_mirrored[:, 12:24] = (dof_mirrored_raw - default_dof_pos) * dof_obs_scale
+        else:
+            obs_mirrored[:, 12:15] = obs[:, 15:18]
+            obs_mirrored[:, 15:18] = obs[:, 12:15]
+            obs_mirrored[:, 18:21] = obs[:, 21:24]
+            obs_mirrored[:, 21:24] = obs[:, 18:21]
+        # dof_vel: proprio dim [24:36] (no correction — velocity symmetric)
         obs_mirrored[:, 24:27] = obs[:, 27:30]
         obs_mirrored[:, 27:30] = obs[:, 24:27]
         obs_mirrored[:, 30:33] = obs[:, 33:36]
         obs_mirrored[:, 33:36] = obs[:, 30:33]
-        # prev actions: proprio dim [36:48]
-        obs_mirrored[:, 36:39] = obs[:, 39:42]
-        obs_mirrored[:, 39:42] = obs[:, 36:39]
-        obs_mirrored[:, 42:45] = obs[:, 45:48]
-        obs_mirrored[:, 45:48] = obs[:, 42:45]
+        # prev actions: proprio dim [36:48] — account for asymmetric hip defaults
+        if default_dof_pos is not None:
+            acts_raw = obs[:, 36:48].clone()                     # (B, 12)
+            acts_mirrored_raw = acts_raw.clone()
+            acts_mirrored_raw[:, 0:3] = acts_raw[:, 3:6]         # FL ← FR
+            acts_mirrored_raw[:, 3:6] = acts_raw[:, 0:3]         # FR ← FL
+            acts_mirrored_raw[:, 6:9] = acts_raw[:, 9:12]        # RL ← RR
+            acts_mirrored_raw[:, 9:12] = acts_raw[:, 6:9]        # RR ← RL
+            # δ = (default_j - default_i) / action_scale
+            swapped_idx = torch.tensor([3,4,5, 0,1,2, 9,10,11, 6,7,8])
+            default_correction = (default_dof_pos[swapped_idx] - default_dof_pos) / action_scale
+            obs_mirrored[:, 36:48] = acts_mirrored_raw + default_correction
+        else:
+            obs_mirrored[:, 36:39] = obs[:, 39:42]
+            obs_mirrored[:, 39:42] = obs[:, 36:39]
+            obs_mirrored[:, 42:45] = obs[:, 45:48]
+            obs_mirrored[:, 45:48] = obs[:, 42:45]
 
         # 1c. Proximal LiDAR: Y-flip + angular-key re-sort
         prox_start = proprio_dim
@@ -1215,6 +1240,11 @@ def get_go2_cmd_safe_xsym_obs_act(
         # RL <-> RR
         acts_mirrored[:, 6:9] = actions[:, 9:12]
         acts_mirrored[:, 9:12] = actions[:, 6:9]
+        # Account for asymmetric hip defaults
+        if default_dof_pos is not None:
+            swapped_idx = torch.tensor([3,4,5, 0,1,2, 9,10,11, 6,7,8])
+            default_correction = (default_dof_pos[swapped_idx] - default_dof_pos) / action_scale
+            acts_mirrored = acts_mirrored + default_correction
         actions_augmented = torch.cat([actions, acts_mirrored], dim=0)
     else:
         actions_augmented = None

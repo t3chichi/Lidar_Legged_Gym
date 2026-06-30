@@ -332,6 +332,9 @@ class OnPolicyRunner:
                 distal_history_length=distal_history_length,
                 height_grid_x_count=int(getattr(self.env.cfg.terrain, 'measured_grid_x_count', 17)),
                 height_grid_y_count=int(getattr(self.env.cfg.terrain, 'measured_grid_y_count', 11)),
+                default_dof_pos=self.env.default_dof_pos,
+                dof_obs_scale=float(getattr(self.env.cfg.normalization.obs_scales, 'dof_pos', 1.0)),
+                action_scale=float(getattr(self.env.cfg.control, 'action_scale', 0.3)),
             )
             sc["data_augmentation_func"] = func
             sc["_env"] = self.env
