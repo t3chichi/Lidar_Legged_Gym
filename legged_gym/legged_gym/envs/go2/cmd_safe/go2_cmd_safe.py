@@ -1168,9 +1168,10 @@ def get_go2_cmd_safe_xsym_obs_act(
         obs_mirrored[:, 10] = -obs[:, 10] # cmd_vy
         obs_mirrored[:, 11] = -obs[:, 11] # cmd_wz
 
-        # 1b. DOF pos swaps — account for asymmetric hip defaults
-        # Go2: FL/RL hip default = +0.1, FR/RR hip default = -0.1
-        # Reconstruct raw dof_pos, swap, re-encode with correct defaults
+        # 1b. DOF pos swaps — hip needs sign negation (mirrored joint convention)
+        # Go2 hip: axis=[1,0,0], FL/RL at +Y, FR/RR at -Y
+        #   → same rotation = opposite leg motion → angle sign convention is mirrored
+        # Thigh/calf: axes symmetric, direct swap is correct
         if default_dof_pos is not None:
             dof_raw = obs[:, 12:24] / dof_obs_scale + default_dof_pos  # (B, 12)
             dof_mirrored_raw = dof_raw.clone()
@@ -1178,6 +1179,11 @@ def get_go2_cmd_safe_xsym_obs_act(
             dof_mirrored_raw[:, 3:6] = dof_raw[:, 0:3]    # FR ← FL
             dof_mirrored_raw[:, 6:9] = dof_raw[:, 9:12]   # RL ← RR
             dof_mirrored_raw[:, 9:12] = dof_raw[:, 6:9]   # RR ← RL
+            # Negate hip angles: new_FL = -old_FR, new_FR = -old_FL, etc.
+            dof_mirrored_raw[:, 0] = -dof_mirrored_raw[:, 0]  # FL hip
+            dof_mirrored_raw[:, 3] = -dof_mirrored_raw[:, 3]  # FR hip
+            dof_mirrored_raw[:, 6] = -dof_mirrored_raw[:, 6]  # RL hip
+            dof_mirrored_raw[:, 9] = -dof_mirrored_raw[:, 9]  # RR hip
             obs_mirrored[:, 12:24] = (dof_mirrored_raw - default_dof_pos) * dof_obs_scale
         else:
             obs_mirrored[:, 12:15] = obs[:, 15:18]
@@ -1196,7 +1202,7 @@ def get_go2_cmd_safe_xsym_obs_act(
         obs_mirrored[:, 27] = -obs_mirrored[:, 27]
         obs_mirrored[:, 30] = -obs_mirrored[:, 30]
         obs_mirrored[:, 33] = -obs_mirrored[:, 33]
-        # prev actions: proprio dim [36:48] — account for asymmetric hip defaults
+        # prev actions: proprio dim [36:48] — hip needs sign negation
         if default_dof_pos is not None:
             acts_raw = obs[:, 36:48].clone()                     # (B, 12)
             acts_mirrored_raw = acts_raw.clone()
@@ -1204,10 +1210,12 @@ def get_go2_cmd_safe_xsym_obs_act(
             acts_mirrored_raw[:, 3:6] = acts_raw[:, 0:3]         # FR ← FL
             acts_mirrored_raw[:, 6:9] = acts_raw[:, 9:12]        # RL ← RR
             acts_mirrored_raw[:, 9:12] = acts_raw[:, 6:9]        # RR ← RL
-            # δ = (default_j - default_i) / action_scale
-            swapped_idx = torch.tensor([3,4,5, 0,1,2, 9,10,11, 6,7,8])
-            default_correction = (default_dof_pos[swapped_idx] - default_dof_pos) / action_scale
-            obs_mirrored[:, 36:48] = acts_mirrored_raw + default_correction
+            # Negate hip prev-actions (mirrored convention, defaults cancel)
+            acts_mirrored_raw[:, 0] = -acts_mirrored_raw[:, 0]   # FL hip
+            acts_mirrored_raw[:, 3] = -acts_mirrored_raw[:, 3]   # FR hip
+            acts_mirrored_raw[:, 6] = -acts_mirrored_raw[:, 6]   # RL hip
+            acts_mirrored_raw[:, 9] = -acts_mirrored_raw[:, 9]   # RR hip
+            obs_mirrored[:, 36:48] = acts_mirrored_raw
         else:
             obs_mirrored[:, 36:39] = obs[:, 39:42]
             obs_mirrored[:, 39:42] = obs[:, 36:39]
@@ -1247,11 +1255,12 @@ def get_go2_cmd_safe_xsym_obs_act(
         # RL <-> RR
         acts_mirrored[:, 6:9] = actions[:, 9:12]
         acts_mirrored[:, 9:12] = actions[:, 6:9]
-        # Account for asymmetric hip defaults
+        # Negate hip actions (mirrored convention, defaults cancel)
         if default_dof_pos is not None:
-            swapped_idx = torch.tensor([3,4,5, 0,1,2, 9,10,11, 6,7,8])
-            default_correction = (default_dof_pos[swapped_idx] - default_dof_pos) / action_scale
-            acts_mirrored = acts_mirrored + default_correction
+            acts_mirrored[:, 0] = -acts_mirrored[:, 0]  # FL hip
+            acts_mirrored[:, 3] = -acts_mirrored[:, 3]  # FR hip
+            acts_mirrored[:, 6] = -acts_mirrored[:, 6]  # RL hip
+            acts_mirrored[:, 9] = -acts_mirrored[:, 9]  # RR hip
         actions_augmented = torch.cat([actions, acts_mirrored], dim=0)
     else:
         actions_augmented = None

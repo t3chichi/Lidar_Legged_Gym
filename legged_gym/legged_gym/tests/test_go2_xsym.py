@@ -143,9 +143,9 @@ class TestDOFSwap:
         obs[:, 12:15] = 100.0  # FL
         obs[:, 15:18] = 200.0  # FR
         obs_aug, _ = func(obs=obs, actions=None)
-        # Hip: corrected for asymmetric defaults (±0.2 rad), thigh/calf: direct copy
-        expected_fl = torch.tensor([[199.8, 200.0, 200.0]]).expand(4, 3)
-        expected_fr = torch.tensor([[100.2, 100.0, 100.0]]).expand(4, 3)
+        # Hip: swap + negate, thigh/calf: direct swap
+        expected_fl = torch.tensor([[-200.0, 200.0, 200.0]]).expand(4, 3)
+        expected_fr = torch.tensor([[-100.0, 100.0, 100.0]]).expand(4, 3)
         torch.testing.assert_close(obs_aug[4:, 12:15], expected_fl)
         torch.testing.assert_close(obs_aug[4:, 15:18], expected_fr)
 
@@ -155,8 +155,8 @@ class TestDOFSwap:
         obs[:, 18:21] = 300.0  # RL
         obs[:, 21:24] = 400.0  # RR
         obs_aug, _ = func(obs=obs, actions=None)
-        expected_rl = torch.tensor([[399.8, 400.0, 400.0]]).expand(4, 3)
-        expected_rr = torch.tensor([[300.2, 300.0, 300.0]]).expand(4, 3)
+        expected_rl = torch.tensor([[-400.0, 400.0, 400.0]]).expand(4, 3)
+        expected_rr = torch.tensor([[-300.0, 300.0, 300.0]]).expand(4, 3)
         torch.testing.assert_close(obs_aug[4:, 18:21], expected_rl)
         torch.testing.assert_close(obs_aug[4:, 21:24], expected_rr)
 
@@ -170,9 +170,9 @@ class TestActionMirror:
         actions[:, 6:9] = torch.tensor([7.0, 8.0, 9.0])
         actions[:, 9:12] = torch.tensor([10.0, 11.0, 12.0])
         _, aug = func(obs=None, actions=actions)
-        # Hip: corrected for asymmetric defaults (±0.667 action units), thigh/calf: unchanged
-        exp_fl = torch.tensor([[3.3333333, 5.0, 6.0]]).expand(4, 3)
-        exp_fr = torch.tensor([[1.6666667, 2.0, 3.0]]).expand(4, 3)
+        # Hip: swap + negate, thigh/calf: direct swap
+        exp_fl = torch.tensor([[-4.0, 5.0, 6.0]]).expand(4, 3)
+        exp_fr = torch.tensor([[-1.0, 2.0, 3.0]]).expand(4, 3)
         torch.testing.assert_close(aug[4:, 0:3], exp_fl)
         torch.testing.assert_close(aug[4:, 3:6], exp_fr)
 
@@ -318,33 +318,27 @@ class TestHipAsymmetry:
     The symmetry function must account for this when swapping DOFs.
     """
 
-    def test_dof_pos_hip_correction(self):
-        """Mirrored FL hip obs should subtract the default difference."""
+    def test_dof_pos_hip_sign_negation(self):
+        """Mirrored FL hip obs = -FR_obs (negate, defaults cancel)."""
         func = _make_func()
         obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
         # FR_dof = 0.0 → obs[FR_hip] = (0 - (-0.1)) * 1.0 = 0.1
         obs[:, 15] = 0.1
         obs_aug, _ = func(obs=obs, actions=None)
         mirrored = obs_aug[4:]
-        # Correct mirror: FL_hip obs = (FR_dof - FL_default) * scale
-        #   = (0 - 0.1) * 1.0 = -0.1
+        # Correct: FL_hip = -FR_obs = -0.1
         torch.testing.assert_close(mirrored[:, 12], torch.full((4,), -0.1))
-        # Old bug produced +0.1
-        assert not torch.allclose(mirrored[:, 12], torch.full((4,), 0.1)), (
-            "Bug: hip default asymmetry not corrected"
-        )
 
-    def test_action_hip_correction(self):
-        """Mirrored hip action accounts for asymmetric default."""
+    def test_action_hip_sign_negation(self):
+        """Mirrored hip action = negated (not offset)."""
         func = _make_func()
         actions = torch.zeros(4, 12)
-        # FL_hip action = 0.5 → PD target = 0.5*0.3 + 0.1 = 0.25 rad
-        # Mirror FL→FR: FR target should = 0.25 rad
-        #   FR_action * 0.3 + (-0.1) = 0.25 → FR_action = 1.167
-        actions[:, 0] = 0.5
+        actions[:, 0] = 0.5   # FL_hip
+        actions[:, 3] = -0.3  # FR_hip
         _, aug = func(obs=None, actions=actions)
-        torch.testing.assert_close(aug[4:, 3], torch.full((4,), 1.1666666666666667))
-        # Old bug produced 0.5 (direct copy)
+        # FL hip ← -FR_hip = 0.3,  FR hip ← -FL_hip = -0.5
+        torch.testing.assert_close(aug[4:, 0], torch.full((4,), 0.3))
+        torch.testing.assert_close(aug[4:, 3], torch.full((4,), -0.5))
 
     def test_dof_vel_hip_sign_flip(self):
         """Hip dof_vel should be negated when swapping FL↔FR."""
