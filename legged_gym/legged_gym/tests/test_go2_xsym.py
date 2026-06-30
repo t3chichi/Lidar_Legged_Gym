@@ -366,6 +366,21 @@ class TestHipAsymmetry:
         torch.testing.assert_close(mirrored[:, 25], torch.full((4,), 0.5))
         torch.testing.assert_close(mirrored[:, 28], torch.full((4,), 1.0))
 
+    def test_prev_action_hip_sign_negation(self):
+        """Prev-action hip should be negated when swapping FL↔FR."""
+        func = _make_func()
+        obs = torch.zeros(4, PROD_POLICY_OBS_DIM)
+        obs[:, 36] = 0.5   # FL hip prev action
+        obs[:, 39] = -0.3  # FR hip prev action
+        obs_aug, _ = func(obs=obs, actions=None)
+        mirrored = obs_aug[4:]
+        # FL hip ← -FR_hip = 0.3,  FR hip ← -FL_hip = -0.5
+        torch.testing.assert_close(mirrored[:, 36], torch.full((4,), 0.3))
+        torch.testing.assert_close(mirrored[:, 39], torch.full((4,), -0.5))
+        # Thigh prev-actions: direct swap (no negation)
+        torch.testing.assert_close(mirrored[:, 37], torch.full((4,), 0.0))  # FL_thigh ← FR_thigh = 0
+        torch.testing.assert_close(mirrored[:, 40], torch.full((4,), 0.0))  # FR_thigh ← FL_thigh = 0
+
     def test_thigh_calf_no_correction(self):
         """Thigh and calf defaults are symmetric, no spurous correction."""
         func = _make_func()
