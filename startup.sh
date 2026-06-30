@@ -48,3 +48,13 @@ go2_soft_pretrain() {
         --task=go2_soft_pretrain --num_envs=16 \
         --load_run=$1 --checkpoint=$2
 }
+
+go2_cmd_safe() {
+    if [ $# -lt 2 ]; then
+        echo "用法: go2_cmd_safe <load_run> <checkpoint>"
+        return 1
+    fi
+    python $LI_LEGGYM_ROOT/legged_gym/legged_gym/scripts/play_laptop.py \
+        --task=go2_cmd_safe --num_envs=16 \
+        --load_run=$1 --checkpoint=$2
+}
