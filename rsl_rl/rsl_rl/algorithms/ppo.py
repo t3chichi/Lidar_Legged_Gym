@@ -229,6 +229,7 @@ class PPO:
             generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
 
         # iterate over batches
+        _mem_step = 0
         for (
             obs_batch,
             critic_obs_batch,
@@ -244,11 +245,18 @@ class PPO:
             rnd_state_batch,
         ) in generator:
 
+            # ── MEMORY DIAG: log on first mini-batch only ──
+            _mem_step += 1
+            is_first_mb = (_mem_step == 1)
+
             # number of augmentations per sample
             # we start with 1 and increase it if we use symmetry augmentation
             num_aug = 1
             # original batch size
             original_batch_size = obs_batch.shape[0]
+
+            if is_first_mb:
+                print(f"[MEM] before_sym   alloc={torch.cuda.memory_allocated()/1e9:.2f}G max={torch.cuda.max_memory_allocated()/1e9:.2f}G")
 
             # check if we should normalize advantages per mini batch
             if self.normalize_advantage_per_mini_batch:
@@ -276,14 +284,21 @@ class PPO:
                 advantages_batch = advantages_batch.repeat(num_aug, 1)
                 returns_batch = returns_batch.repeat(num_aug, 1)
 
+            if is_first_mb:
+                print(f"[MEM] after_sym    alloc={torch.cuda.memory_allocated()/1e9:.2f}G max={torch.cuda.max_memory_allocated()/1e9:.2f}G")
+
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
             # -- actor
             with autocast(enabled=self.amp_enabled):
                 self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                if is_first_mb:
+                    print(f"[MEM] after_act    alloc={torch.cuda.memory_allocated()/1e9:.2f}G max={torch.cuda.max_memory_allocated()/1e9:.2f}G")
                 actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
                 # -- critic
                 value_batch = self.policy.evaluate(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+                if is_first_mb:
+                    print(f"[MEM] after_eval   alloc={torch.cuda.memory_allocated()/1e9:.2f}G max={torch.cuda.max_memory_allocated()/1e9:.2f}G")
                 # -- entropy
                 # we only keep the entropy of the first augmentation (the original one)
                 mu_batch = self.policy.action_mean[:original_batch_size]
@@ -402,10 +417,16 @@ class PPO:
                     else:
                         symmetry_loss = symmetry_loss.detach()
 
+            if is_first_mb:
+                print(f"[MEM] before_bwd   alloc={torch.cuda.memory_allocated()/1e9:.2f}G max={torch.cuda.max_memory_allocated()/1e9:.2f}G")
+
             # Compute the gradients
             # -- For PPO
             self.optimizer.zero_grad()
             self.scaler.scale(loss).backward()
+
+            if is_first_mb:
+                print(f"[MEM] after_bwd    alloc={torch.cuda.memory_allocated()/1e9:.2f}G max={torch.cuda.max_memory_allocated()/1e9:.2f}G")
             # -- For RND
             if self.rnd and rnd_loss is not None:
                 self.rnd_optimizer.zero_grad()  # type: ignore
