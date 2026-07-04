@@ -127,8 +127,8 @@ class El4090LidarCfgPPO(El4090SpiderCfgPPO):
         class symmetry_cfg:
             # use_data_augmentation = True
             # use_mirror_loss = True
-            use_data_augmentation = False
-            use_mirror_loss = False
+            use_data_augmentation = True
+            use_mirror_loss = True
             mirror_loss_coeff = 1.0
             data_augmentation_func = "legged_gym.envs.el_4090.lidar.el_4090_lidar_symmetry:get_el4090_lidar_xsym_obs_act"
             # Dimension parameters injected into the symmetry function by the runner.
