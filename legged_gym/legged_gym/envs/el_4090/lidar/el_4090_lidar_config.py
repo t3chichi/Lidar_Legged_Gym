@@ -124,6 +124,8 @@ class El4090LidarCfgPPO(El4090SpiderCfgPPO):
         privileged_supervision_coef = 1.0
 
     class algorithm(El4090SpiderCfgPPO.algorithm):
+        num_mini_batches = 8
+
         class symmetry_cfg:
             # use_data_augmentation = True
             # use_mirror_loss = True
@@ -147,7 +149,6 @@ class El4090LidarCfgPPO(El4090SpiderCfgPPO):
         policy_class_name = "CmdSafeActorCritic"
         algorithm_class_name = "PPO"
         num_steps_per_env = 24
-        num_mini_batches = 8
         max_iterations = 4000
         save_interval = 50
         experiment_name = "el_4090_lidar"
