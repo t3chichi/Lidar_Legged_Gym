@@ -213,9 +213,9 @@ class El4090SpiderCfgPPO(ElSpiderAirRoughCfgPPO):
 
     class algorithm(ElSpiderAirRoughCfgPPO.algorithm):
         # Symmetry augmentation configuration
-        class symmetry_cfg:
-            use_data_augmentation = True
-            use_mirror_loss = True
-            mirror_loss_coeff = 1.0
-            data_augmentation_func = "legged_gym.envs.elspider_air.elspider:get_elair_xsym_obs_act"
-        
+        # class symmetry_cfg:
+        #     use_data_augmentation = True
+        #     use_mirror_loss = True
+        #     mirror_loss_coeff = 1.0
+        #     data_augmentation_func = "legged_gym.envs.elspider_air.elspider:get_elair_xsym_obs_act"
+        pass

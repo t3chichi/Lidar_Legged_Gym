@@ -239,8 +239,8 @@ class Go2CmdSafeCfgPPO(Go2RoughCfgPPO):
         num_mini_batches = 8
 
         class symmetry_cfg:
-            use_data_augmentation = True
-            use_mirror_loss = True
+            use_data_augmentation = False
+            use_mirror_loss = False
             mirror_loss_coeff = 1.0
             data_augmentation_func = (
                 "legged_gym.envs.go2.cmd_safe.go2_cmd_safe:get_go2_cmd_safe_xsym_obs_act"
