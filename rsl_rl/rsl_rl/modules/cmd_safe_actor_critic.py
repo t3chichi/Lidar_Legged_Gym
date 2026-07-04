@@ -283,7 +283,7 @@ class CmdSafeActorCritic(nn.Module):
             dist_feat = unpad_trajectories(dist_feat, masks)
         else:
             # Inference
-            print(f"  [GRU] before_sort alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
+            print(f"  [GRU] before_sort B={proximal.shape[0]} alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_sorted = self._sort_by_spherical(proximal)
             print(f"  [GRU] after_sort  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_feat_t = self._encode_proximal_chunked(prox_sorted.unsqueeze(1))
