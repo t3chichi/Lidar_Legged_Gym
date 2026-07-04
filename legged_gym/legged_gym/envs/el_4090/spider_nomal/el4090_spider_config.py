@@ -62,7 +62,7 @@ class El4090SpiderCfg(ElSpiderAirRoughCfg):
         slope_treshold = 0.75  # slopes above this threshold will be corrected to vertical surfaces
 
     class asset(ElSpiderAirRoughCfg.asset):
-        self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
+        self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
 
     class control(ElSpiderAirRoughCfg.control):
         control_type = 'P'
@@ -91,7 +91,7 @@ class El4090SpiderCfg(ElSpiderAirRoughCfg):
         shoulder_name = "shoulder"
         penalize_contacts_on = ["BASE","SHANK","THIGH"]
         terminate_after_contacts_on = []
-        self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
+        self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = False
 
     class init_state(ElSpiderAirRoughCfg.init_state):
