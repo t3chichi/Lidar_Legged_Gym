@@ -283,14 +283,19 @@ class CmdSafeActorCritic(nn.Module):
             dist_feat = unpad_trajectories(dist_feat, masks)
         else:
             # Inference
+            print(f"  [GRU] before_sort alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_sorted = self._sort_by_spherical(proximal)
+            print(f"  [GRU] after_sort  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_feat_t = self._encode_proximal_chunked(prox_sorted.unsqueeze(1))
+            print(f"  [GRU] after_prox  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_feat = prox_feat_t.squeeze(1)
 
             dist_feat_t = self._encode_distal_chunked(distal.unsqueeze(1))
+            print(f"  [GRU] after_dist  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             dist_feat = dist_feat_t.squeeze(1)
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
+        print(f"  [GRU] after_cat   alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
 
         self._cached_proximal_feature = prox_feat
         self._cached_actor_latent = actor_latent
