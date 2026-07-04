@@ -366,8 +366,8 @@ class PPO:
                 else:
                     auxiliary_loss = None
 
-                # Symmetry loss
-                if self.symmetry:
+                # Symmetry loss — only run if mirror_loss is enabled
+                if self.symmetry and self.symmetry.get("use_mirror_loss", False):
                     # obtain the symmetric actions
                     # if we did augmentation before then we don't need to augment again
                     if not self.symmetry["use_data_augmentation"]:
