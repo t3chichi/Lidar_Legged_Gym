@@ -86,7 +86,7 @@ class El4090SpiderCfg(ElSpiderAirRoughCfg):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/el_4090/urdf/el_4090.urdf"
         name = "el_4090"
         foot_name = "FOOT"
-        collapse_fixed_joints = True # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
+        collapse_fixed_joints = False # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
         fix_base_link = False # fixe the base of the robot
         shoulder_name = "shoulder"
         penalize_contacts_on = ["BASE","SHANK","THIGH"]
