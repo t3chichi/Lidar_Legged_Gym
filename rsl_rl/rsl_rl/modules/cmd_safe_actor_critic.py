@@ -241,6 +241,12 @@ class CmdSafeActorCritic(nn.Module):
         out = torch.empty(B, T_prox, self.proximal_feature_dim,
                           device=prox_points.device, dtype=prox_points.dtype)
         chunk_size = 128
+        _first = getattr(self, '_dbg_printed', False)
+        if not _first and B > 256:
+            self._dbg_printed = True
+            n_chunks = (B + chunk_size - 1) // chunk_size
+            print(f"[DIAG] B={B} chunk_size={chunk_size} n_chunks={n_chunks} "
+                  f"GRU_input=[{min(chunk_size,B)},{P},3]", flush=True)
         for start in range(0, B, chunk_size):
             end = min(start + chunk_size, B)
             chunk = prox_points[start:end]
@@ -283,19 +289,14 @@ class CmdSafeActorCritic(nn.Module):
             dist_feat = unpad_trajectories(dist_feat, masks)
         else:
             # Inference
-            print(f"  [GRU] before_sort B={proximal.shape[0]} alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_sorted = self._sort_by_spherical(proximal)
-            print(f"  [GRU] after_sort  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_feat_t = self._encode_proximal_chunked(prox_sorted.unsqueeze(1))
-            print(f"  [GRU] after_prox  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             prox_feat = prox_feat_t.squeeze(1)
 
             dist_feat_t = self._encode_distal_chunked(distal.unsqueeze(1))
-            print(f"  [GRU] after_dist  alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
             dist_feat = dist_feat_t.squeeze(1)
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
-        print(f"  [GRU] after_cat   alloc={torch.cuda.memory_allocated()/1e9:.2f}G", flush=True)
 
         self._cached_proximal_feature = prox_feat
         self._cached_actor_latent = actor_latent
