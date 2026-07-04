@@ -367,6 +367,7 @@ class PPO:
                     auxiliary_loss = None
 
                 # Symmetry loss — only run if mirror_loss is enabled
+                symmetry_loss = None
                 if self.symmetry and self.symmetry.get("use_mirror_loss", False):
                     # obtain the symmetric actions
                     # if we did augmentation before then we don't need to augment again
@@ -442,7 +443,7 @@ class PPO:
             if mean_rnd_loss is not None:
                 mean_rnd_loss += rnd_loss.item()
             # -- Symmetry loss
-            if mean_symmetry_loss is not None:
+            if mean_symmetry_loss is not None and symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
             # -- Auxiliary loss
             if mean_auxiliary_loss is not None and auxiliary_loss is not None:
