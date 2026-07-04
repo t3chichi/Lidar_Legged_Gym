@@ -150,3 +150,4 @@ class El4090LidarCfgPPO(El4090SpiderCfgPPO):
         max_iterations = 4000
         save_interval = 50
         experiment_name = "el_4090_lidar"
+        amp_enabled = True
