@@ -62,7 +62,7 @@ class El4090SpiderCfg(ElSpiderAirRoughCfg):
         slope_treshold = 0.75  # slopes above this threshold will be corrected to vertical surfaces
 
     class asset(ElSpiderAirRoughCfg.asset):
-        self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
+        self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
 
     class control(ElSpiderAirRoughCfg.control):
         control_type = 'P'
@@ -86,12 +86,12 @@ class El4090SpiderCfg(ElSpiderAirRoughCfg):
         file = "{LEGGED_GYM_ROOT_DIR}/resources/robots/el_4090/urdf/el_4090.urdf"
         name = "el_4090"
         foot_name = "FOOT"
-        collapse_fixed_joints = False # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
+        collapse_fixed_joints = True # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
         fix_base_link = False # fixe the base of the robot
         shoulder_name = "shoulder"
         penalize_contacts_on = ["BASE","SHANK","THIGH"]
         terminate_after_contacts_on = []
-        self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
+        self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = False
 
     class init_state(ElSpiderAirRoughCfg.init_state):
