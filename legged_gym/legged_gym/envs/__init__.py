@@ -252,3 +252,8 @@ task_registry.register("anymal_c_rough_student", AnymalStudent, AnymalCRoughStud
 # Register franka environments
 task_registry.register("franka", Franka, FrankaCfg(), FrankaCfgPPO())
 task_registry.register("franka_batch_rollout", FrankaBatchRollout, FrankaBatchRolloutCfg(), FrankaBatchRolloutCfgPPO)
+
+# Register EL_4090 lidar environments
+from .el_4090.lidar.el_4090_lidar import EL_4090_Lidar
+from .el_4090.lidar.el_4090_lidar_config import El4090LidarCfg, El4090LidarCfgPPO
+task_registry.register("el4090_lidar_exp", EL_4090_Lidar, El4090LidarCfg(), El4090LidarCfgPPO())
