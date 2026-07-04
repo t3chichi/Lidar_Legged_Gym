@@ -55,6 +55,16 @@ class El4090LidarCfg(El4090SpiderCfg):
         rot_randomization_range = [-3.14, 3.14]
         spawn_offset_range = 0.5
 
+    # ── Rewards: override parent to remove reward names missing in old project ──
+    class rewards(El4090SpiderCfg.rewards):
+        class scales(El4090SpiderCfg.rewards.scales):
+            stand_still2 = 0.0
+            gait_2_step = 0.0
+            # Note: _reward_stand_still2 and _reward_gait_2_step are not implemented
+            # in the old project's ElSpider/LeggedRobot base classes.
+            # Setting to 0.0 prevents _prepare_reward_function from attempting
+            # to getattr these missing methods.
+
     # ── LiDAR perception parameters ──
     class pd_risknet:
         enabled = True
