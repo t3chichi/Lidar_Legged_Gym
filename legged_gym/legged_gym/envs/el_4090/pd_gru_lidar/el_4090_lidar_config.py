@@ -1,3 +1,12 @@
+"""Base config for the EL_4090 PD-GRU LiDAR tasks.
+
+`El4090LidarCfg` / `El4090LidarCfgPPO`（注册名 `el4090_lidar`）是基座设定：
+固化同一 PD 网络（LidarPDActorCritic）共用的雷达、观测重排、辅助监督等配置，
+供不同训练变体（如 `El4090LidarTripod2LowCfg`、`El4090LidarTripod2LowAvoidCfg`）
+继承复用，使各训练只需覆写少数差异项。基座本身不用于直接训练——请训练
+继承它的具体变体任务。
+"""
+
 from legged_gym.envs.el_4090.spider_nomal.el4090_spider_config import (
     El4090SpiderCfg,
     El4090SpiderCfgPPO,

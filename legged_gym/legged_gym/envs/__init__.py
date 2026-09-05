@@ -227,7 +227,10 @@ task_registry.register("anymal_c_rough_student", AnymalStudent, AnymalCRoughStud
 task_registry.register("franka", Franka, FrankaCfg(), FrankaCfgPPO())
 task_registry.register("franka_batch_rollout", FrankaBatchRollout, FrankaBatchRolloutCfg(), FrankaBatchRolloutCfgPPO)
 
-# Register EL_4090 PD-GRU lidar environments (ported from lab repo)
+# Register EL_4090 PD-GRU lidar environments (ported from lab repo).
+# el4090_lidar is the BASE config for the shared PD network — variants
+# (_tripod2_low, _tripod2_low_avoid, ...) inherit from it; train the
+# variants, not the base task itself.
 from .el_4090.pd_gru_lidar.el_4090_lidar import EL_4090_Lidar
 from .el_4090.pd_gru_lidar.el_4090_lidar_config import El4090LidarCfg, El4090LidarCfgPPO
 from .el_4090.pd_gru_lidar.el_4090_lidar_tripod2_low_config import El4090LidarTripod2LowCfg, El4090LidarTripod2LowCfgPPO

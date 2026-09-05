@@ -173,7 +173,7 @@ task_registry.register("task_name", EnvClass, EnvCfg(), TrainCfgPPO())
 - **对称函数**：字符串引用 `legged_gym.envs.el_4090.pd_gru_lidar.el_4090_lidar_symmetry:get_el4090_lidar_xsym_obs_act`。
 - **env↔runner 契约**：`cfg.pd_risknet.enabled` 触发；env 需暴露 `lidar_points_base`、`_sensor_offset_quat`、`_sensor_translation`、（可选）`aux_obs_buf`。
 - **雷达**：`legged_gym/utils/LidarSensor/`（warp 内核，`LidarType.SIMPLE_GRID`），域随机化：点遮蔽 0.02 + 距离噪声 0.02。
-- **任务变体**：`el4090_lidar`（平面地形基础版）、`_tripod2_low`（低蹲步态、平面、多阶段奖励课程）、`_tripod2_low_avoid`（柱阵 trimesh 避障、`terrain_proportions` 索引 7 = pillar_field）。
+- **任务变体**：`el4090_lidar`（**基座设定**：固化同一 PD 网络共用的雷达/观测/辅助监督配置，供变体继承复用，本身不用于直接训练）、`_tripod2_low`（低蹲步态、平面、多阶段奖励课程）、`_tripod2_low_avoid`（柱阵 trimesh 避障、`terrain_proportions` 索引 7 = pillar_field）。
 
 **设计文档（历史，描述迁移前的 go2 PDRiskNet 架构）：**
 - `OmniPeception.md` — Omni-Perception 论文全文（方法、实验、消融、域随机化参数）
