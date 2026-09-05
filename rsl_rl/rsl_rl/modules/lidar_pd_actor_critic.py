@@ -1,7 +1,7 @@
-"""CmdSafeActorCritic  零初始化双 GRU 感知 Actor-Critic。
+"""LidarPDActorCritic  零初始化双 GRU 感知 Actor-Critic。
 
 近端 GRU: input=3, hidden=187, 每帧零初始化, seq_len=256。
-远端 GRU: input=3, hidden=64, 每帧零初始化, seq_len=640。
+远端 GRU: input=3, hidden=64, 每帧零初始化, seq_len=1280。
 height_supervisor: Linear(187, 187) 近端特征   高度图, 辅助 MSE 监督。
 """
 
@@ -42,18 +42,19 @@ def _quat_apply(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return v + q_scalar * t + torch.cross(q_vec_exp, t, dim=-1)
 
 
-class CmdSafeActorCritic(nn.Module):
-    """CmdSafe Actor-Critic with dual zero-init GRU perception.
+class LidarPDActorCritic(nn.Module):
+    """LidarPD Actor-Critic with dual zero-init GRU perception.
 
-    Observation layout (from CmdSafeHistoryWrapper):
-      - proprio (48 dims)
-      - proximal points (256   3 = 768 dims, sorted by spherical key)
-      - distal points (640 × 3 = 1920 dims, 10-frame concatenated + globally sorted)
-      Total: 48 + 768 + 1920 = 2736
+    Observation layout (from LidarWrapper):
+      - proprio (proprio_obs_dim dims)
+      - proximal points (proximal_points * 3 dims, sorted by spherical key)
+      - distal points (distal_history_length * distal_points * 3 dims,
+        concatenated + globally sorted)
+      Total: proprio_obs_dim + proximal_points*3 + distal_history_length*distal_points*3
 
     Architecture:
       Proximal: (B, 256, 3)   GRU(3  187, zero-init)   h_n (B, 187)
-      Distal:   (B, 640, 3)   GRU(3  64, zero-init)    h_n (B, 64)
+      Distal:   (B, 1280, 3)   GRU(3  64, zero-init)    h_n (B, 64)
       Actor:    (B, 48+187+64=299)   MLP   12
       Critic:   (B, 299)   MLP   1
       Aux:      Linear(187, 187)   MSE with privileged heights
@@ -64,29 +65,29 @@ class CmdSafeActorCritic(nn.Module):
     def __init__(
         self,
         num_actor_obs: int,
-        num_critic_obs: int,
+        num_critic_obs: int,  # unused — actor/critic share GRU latent, critic input = actor_input_dim
         num_actions: int,
         actor_hidden_dims: list[int] | tuple = (1024, 512, 256, 128),
-        critic_hidden_dims: list[int] | tuple = (512, 256, 128),
+        critic_hidden_dims: list[int] | tuple = (1024, 512, 256, 128),
         activation: str = "elu",
         init_noise_std: float = 1.0,
         noise_std_type: str = "scalar",
         proximal_points: int = 256,
         distal_history_length: int = 10,
-        distal_points: int = 64,
+        distal_points: int = 128,
         proximal_feature_dim: int = 187,
         distal_feature_dim: int = 64,
         proprio_obs_dim: int = 48,
         privileged_height_dim: int = 187,
-        privileged_critic_dim: int = 235,
-        privileged_supervision_coef: float = 1.0,
         sensor_offset_rpy: list[float] | None = None,
         sensor_offset_pos: list[float] | None = None,
+        gradient_checkpointing_proximal: bool = False,
+        gradient_checkpointing_distal: bool = True,
         **kwargs,
     ):
         if kwargs:
             print(
-                "CmdSafeActorCritic.__init__ got unexpected arguments, which will be ignored: "
+                "LidarPDActorCritic.__init__ got unexpected arguments, which will be ignored: "
                 + str(list(kwargs.keys()))
             )
         super().__init__()
@@ -98,9 +99,9 @@ class CmdSafeActorCritic(nn.Module):
         self.distal_feature_dim = int(distal_feature_dim)
         self.proprio_obs_dim = int(proprio_obs_dim)
         self.privileged_height_dim = int(privileged_height_dim)
-        self.privileged_critic_dim = int(privileged_critic_dim)
-        self.privileged_supervision_coef = float(privileged_supervision_coef)
         self.num_actions = num_actions
+        self.gradient_checkpointing_proximal = gradient_checkpointing_proximal
+        self.gradient_checkpointing_distal = gradient_checkpointing_distal
 
         self._sensor_conj: torch.Tensor | None = None
         if sensor_offset_rpy is not None and any(v != 0.0 for v in sensor_offset_rpy):
@@ -116,9 +117,11 @@ class CmdSafeActorCritic(nn.Module):
             + self.proximal_points * 3
             + self.distal_history_length * self.distal_points * 3
         )
-        if num_actor_obs < expected_obs:
+        if num_actor_obs != expected_obs:
             raise ValueError(
-                f"CmdSafeActorCritic expects at least {expected_obs} actor obs dims, "
+                f"LidarPDActorCritic expects {expected_obs} actor obs dims "
+                f"(proprio={self.proprio_obs_dim} + proximal={self.proximal_points}*3 "
+                f"+ distal={self.distal_history_length}*{self.distal_points}*3), "
                 f"got {num_actor_obs}"
             )
 
@@ -179,6 +182,15 @@ class CmdSafeActorCritic(nn.Module):
         return self.distribution.stddev
 
     @property
+    def cached_proximal_feature(self) -> torch.Tensor | None:
+        """act() 调用后有效的近端特征缓存。
+
+        同一 mini-batch 内 act() → evaluate() → compute_auxiliary_loss() 有效。
+        compute_auxiliary_loss() 内部直接读取 _cached_proximal_feature。
+        """
+        return self._cached_proximal_feature
+
+    @property
     def entropy(self) -> torch.Tensor:
         return self.distribution.entropy().sum(dim=-1)
 
@@ -236,61 +248,70 @@ class CmdSafeActorCritic(nn.Module):
         order = torch.argsort(key, dim=1)
         return torch.gather(points, 1, order.unsqueeze(-1).expand_as(points))
 
+    def _proximal_gru_hidden(self, x: torch.Tensor) -> torch.Tensor:
+        _, h = self.proximal_gru(x)
+        return h
+
+    def _distal_gru_hidden(self, x: torch.Tensor) -> torch.Tensor:
+        _, h = self.distal_gru(x)
+        return h
+
     def _encode_proximal_chunked(self, prox_points: torch.Tensor) -> torch.Tensor:
         B, T_prox, P, _ = prox_points.shape
-        out = torch.empty(B, T_prox, self.proximal_feature_dim,
-                          device=prox_points.device, dtype=prox_points.dtype)
         chunk_size = 128
-        _first = getattr(self, '_dbg_printed', False)
-        if not _first and B > 256:
-            self._dbg_printed = True
-            n_chunks = (B + chunk_size - 1) // chunk_size
-            print(f"[DIAG] B={B} chunk_size={chunk_size} n_chunks={n_chunks} "
-                  f"GRU_input=[{min(chunk_size,B)},{P},3]", flush=True)
+        outputs = []
         for start in range(0, B, chunk_size):
             end = min(start + chunk_size, B)
             chunk = prox_points[start:end]
             c = end - start
             chunk_seq = chunk.reshape(c * T_prox, P, 3)
-            _, h = self.proximal_gru(chunk_seq)
-            out[start:end] = h.squeeze(0).reshape(c, T_prox, -1)
-        return out
+            if torch.is_grad_enabled() and self.gradient_checkpointing_proximal:
+                h = torch.utils.checkpoint.checkpoint(
+                    self._proximal_gru_hidden, chunk_seq, use_reentrant=False)
+            else:
+                _, h = self.proximal_gru(chunk_seq)
+            outputs.append(h.squeeze(0).reshape(c, T_prox, -1))
+        return torch.cat(outputs, dim=0)
 
     def _encode_distal_chunked(self, dist_points: torch.Tensor) -> torch.Tensor:
         B, T_dist, D, _ = dist_points.shape
-        out = torch.empty(B, T_dist, self.distal_feature_dim,
-                          device=dist_points.device, dtype=dist_points.dtype)
         chunk_size = 128
+        outputs = []
         for start in range(0, B, chunk_size):
             end = min(start + chunk_size, B)
             chunk = dist_points[start:end]
             c = end - start
             chunk_seq = chunk.reshape(c * T_dist, D, 3)
-            _, h = self.distal_gru(chunk_seq)
-            out[start:end] = h.squeeze(0).reshape(c, T_dist, -1)
-        return out
+            if torch.is_grad_enabled() and self.gradient_checkpointing_distal:
+                h = torch.utils.checkpoint.checkpoint(
+                    self._distal_gru_hidden, chunk_seq, use_reentrant=False)
+            else:
+                _, h = self.distal_gru(chunk_seq)
+            outputs.append(h.squeeze(0).reshape(c, T_dist, -1))
+        return torch.cat(outputs, dim=0)
 
-    def _build_actor_latent(self, observations: torch.Tensor, masks: torch.Tensor | None = None):
+    def _build_actor_latent(self, observations: torch.Tensor, masks: torch.Tensor | None = None, *, cache: bool = True):
         proprio, proximal, distal = self._split_obs(observations)
 
-        if masks is not None:
-            # Training: flatten (T, B, ...) to (T*B, ...) for zero-init GRU per frame
+        if masks is not None and masks.numel() > 0:
+            # Recurrent path: flatten (T, B, ...) for zero-init GRU per frame.
+            # Uses chunked encoding (same as inference path) for memory safety.
             T_seq, B = proprio.shape[:2]
             prox_flat = proximal.reshape(T_seq * B, self.proximal_points, 3)
-            _, h_prox = self.proximal_gru(prox_flat)
-            prox_feat = h_prox.squeeze(0).reshape(T_seq, B, self.proximal_feature_dim)
+            prox_feat_flat = self._encode_proximal_chunked(prox_flat.unsqueeze(1)).squeeze(1)
+            prox_feat = prox_feat_flat.reshape(T_seq, B, self.proximal_feature_dim)
 
             dist_flat = distal.reshape(T_seq * B, self.distal_history_length * self.distal_points, 3)
-            _, h_dist = self.distal_gru(dist_flat)
-            dist_feat = h_dist.squeeze(0).reshape(T_seq, B, self.distal_feature_dim)
+            dist_feat_flat = self._encode_distal_chunked(dist_flat.unsqueeze(1)).squeeze(1)
+            dist_feat = dist_feat_flat.reshape(T_seq, B, self.distal_feature_dim)
 
             proprio = unpad_trajectories(proprio, masks)
             prox_feat = unpad_trajectories(prox_feat, masks)
             dist_feat = unpad_trajectories(dist_feat, masks)
         else:
             # Inference
-            prox_sorted = self._sort_by_spherical(proximal)
-            prox_feat_t = self._encode_proximal_chunked(prox_sorted.unsqueeze(1))
+            # proximal 点云已由 LidarWrapper 按球坐标排序，直接使用
+            prox_feat_t = self._encode_proximal_chunked(proximal.unsqueeze(1))
             prox_feat = prox_feat_t.squeeze(1)
 
             dist_feat_t = self._encode_distal_chunked(distal.unsqueeze(1))
@@ -298,8 +319,9 @@ class CmdSafeActorCritic(nn.Module):
 
         actor_latent = torch.cat((proprio, prox_feat, dist_feat), dim=-1)
 
-        self._cached_proximal_feature = prox_feat
-        self._cached_actor_latent = actor_latent
+        if cache:
+            self._cached_proximal_feature = prox_feat
+            self._cached_actor_latent = actor_latent
         return actor_latent
 
     def update_distribution(self, observations, masks=None, hidden_states=None):
@@ -324,77 +346,41 @@ class CmdSafeActorCritic(nn.Module):
         return self.distribution.log_prob(actions).sum(dim=-1)
 
     def act_inference(self, observations):
-        actor_latent = self._build_actor_latent(observations)
+        actor_latent = self._build_actor_latent(observations, cache=False)
         return self.actor(actor_latent)
 
     def evaluate(self, critic_observations, masks=None, hidden_states=None, **kwargs):
-        if masks is not None:
-            if self._cached_actor_latent is not None:
+        if masks is not None and self._cached_actor_latent is not None:
+            # 缓存命中：recurrent 模式 (masks.numel() > 0) 直接使用，
+            # feedforward 模式 (空 sentinel) 校验 batch size 一致性
+            if masks.numel() > 0 or critic_observations.shape[0] == self._cached_actor_latent.shape[0]:
                 return self.critic(self._cached_actor_latent)
-            actor_latent = self._build_actor_latent(critic_observations, masks=masks)
-            return self.critic(actor_latent)
-        else:
-            if self._cached_actor_latent is not None:
-                return self.critic(self._cached_actor_latent)
-            expected_dim = (
-                self.proprio_obs_dim
-                + self.proximal_points * 3
-                + self.distal_history_length * self.distal_points * 3
-            )
-            if critic_observations.shape[-1] < expected_dim:
-                raise ValueError(
-                    f"evaluate() cold-start expects >= {expected_dim}-dim actor observations, "
-                    f"got {critic_observations.shape[-1]}."
-                )
-            actor_latent = self._build_actor_latent(critic_observations)
-            return self.critic(actor_latent)
+        # 推理模式 / compute_returns / 冷启动: 缓存可能过期，始终从输入构建
+        actor_latent = self._build_actor_latent(critic_observations, masks=masks)
+        return self.critic(actor_latent)
 
-    def get_auxiliary_loss(self, privileged_heights: torch.Tensor, masks: torch.Tensor | None = None) -> torch.Tensor:
-        if self._cached_proximal_feature is None:
-            return torch.zeros((), device=privileged_heights.device)
-        if self._cached_proximal_feature.numel() == 0:
-            return torch.zeros((), device=privileged_heights.device)
+    def compute_auxiliary_loss(self, aux_targets: torch.Tensor) -> torch.Tensor:
+        """Height supervision loss.  Reads cached proximal feature from the
+        same mini-batch's act() call — must be called AFTER act() in
+        PPO.update().
 
-        if masks is not None and privileged_heights.dim() == 3:
-            privileged_heights = unpad_trajectories(privileged_heights, masks)
-
-        if self._cached_proximal_feature.dim() == 3:
-            prox_feat = self._cached_proximal_feature[:, -1, :]
-        else:
-            prox_feat = self._cached_proximal_feature
-
+        Args:
+            aux_targets: height grid targets, shape [batch_size, height_dim].
+        Returns:
+            Scalar MSE loss, or zero if proximal feature cache is cold.
+        """
+        prox_feat = self._cached_proximal_feature
+        if prox_feat is None:
+            return torch.zeros((), device=aux_targets.device)
         pred = self.height_supervisor(prox_feat)
-
-        if privileged_heights.dim() == 3:
-            priv_obs = privileged_heights[:, -1, :]
-        else:
-            priv_obs = privileged_heights
-
-        actual_dim = priv_obs.shape[-1]
-        if actual_dim == self.privileged_height_dim:
-            height_target = priv_obs
-        elif actual_dim == self.privileged_critic_dim:
-            height_target = priv_obs[..., -self.privileged_height_dim:]
-        else:
-            if actual_dim >= self.privileged_height_dim:
-                height_target = priv_obs[..., -self.privileged_height_dim:]
-            else:
-                print(f"[WARNING] Aux loss skip: actual dim {actual_dim}, expected {self.privileged_height_dim}")
-                return torch.zeros((), device=privileged_heights.device)
-
-        if pred.shape[-1] != height_target.shape[-1]:
-            min_dim = min(pred.shape[-1], height_target.shape[-1])
-            pred = pred[..., :min_dim]
-            height_target = height_target[..., :min_dim]
-
-        return self.privileged_supervision_coef * torch.mean(torch.square(pred - height_target))
+        return torch.nn.functional.mse_loss(pred, aux_targets)
 
     def load_state_dict(self, state_dict, strict=True):
         if 'critic.0.weight' in state_dict:
             expected = self.critic[0].weight.shape
             actual = state_dict['critic.0.weight'].shape
             if expected != actual:
-                print(f"[CmdSafeActorCritic] Critic weight shape mismatch "
+                print(f"[LidarPDActorCritic] Critic weight shape mismatch "
                       f"(checkpoint {list(actual)} -> model {list(expected)}). "
                       f"Critic will be randomly initialized.")
                 keys_to_remove = [k for k in state_dict if k.startswith('critic.')]
@@ -405,7 +391,7 @@ class CmdSafeActorCritic(nn.Module):
             expected = self.proximal_gru.weight_ih_l0.shape
             actual = state_dict['proximal_gru.weight_ih_l0'].shape
             if expected != actual:
-                print("[CmdSafeActorCritic] Architecture changed "
+                print(f"[LidarPDActorCritic] Architecture changed "
                       f"(proximal_gru input_size: checkpoint={actual[1]}, model={expected[1]}). "
                       "Perception modules will be randomly initialized.")
                 prefix_blacklist = (
