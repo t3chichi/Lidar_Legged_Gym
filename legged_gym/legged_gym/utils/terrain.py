@@ -46,12 +46,22 @@ class Terrain:
             return
         self.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
-        self.proportions = [np.sum(cfg.terrain_proportions[:i+1]) for i in range(len(cfg.terrain_proportions))]
+        # Normalize terrain_proportions from config to ensure they sum to 1
+        raw = np.array(cfg.terrain_proportions, dtype=float)
+        s = raw.sum()
+        if s == 0:
+            # avoid division by zero: fallback to uniform distribution
+            normalized = np.ones_like(raw) / len(raw)
+        else:
+            normalized = raw / s
+        # store raw and normalized versions for debugging/inspection
+        self.raw_proportions = raw.tolist()
+        self.normalized_proportions = normalized.tolist()
+        # cumulative probabilities used to select terrain types
+        self.proportions = list(np.cumsum(normalized))
 
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
         self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
-        self.spawn_angles = np.zeros((cfg.num_rows, cfg.num_cols))
-        self.goal_offsets = np.zeros((cfg.num_rows, cfg.num_cols, 2))
 
         self.width_per_env_pixels = int(self.env_width / cfg.horizontal_scale)
         self.length_per_env_pixels = int(self.env_length / cfg.horizontal_scale)
@@ -80,30 +90,29 @@ class Terrain:
                                                                                          self.cfg.horizontal_scale,
                                                                                          self.cfg.vertical_scale,
                                                                                          self.cfg.slope_treshold)
+        print("Terrain proportions (raw):", getattr(self, 'raw_proportions', None),
+              "normalized:", getattr(self, 'normalized_proportions', None),
+              "cumulative:", self.proportions)
 
     def randomized_terrain(self, difficulty_scale=1.0):
         for k in range(self.cfg.num_sub_terrains):
+            # Env coordinates in the world
             (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.cfg.num_cols))
 
             choice = np.random.uniform(0, 1)
             difficulty = np.random.choice([0.5, 0.75, 0.9]) * difficulty_scale
-            if hasattr(self.cfg, "turn_angle_deg_max"):
-                self.cfg._first_turn_left = ((i + j) % 2 == 0)
-            terrain = self.make_terrain(choice, difficulty, col_index=j)
-            self.add_terrain_to_map(terrain, i, j, direction=j % 4)
-        self._draw_goal_rings()
+            terrain = self.make_terrain(choice, difficulty)
+            self.add_terrain_to_map(terrain, i, j)
 
     def curiculum(self, difficulty_scale=1.0):
+        print("Generating curriculum terrains with difficulty scale: ", difficulty_scale)
         for j in range(self.cfg.num_cols):
             for i in range(self.cfg.num_rows):
                 difficulty = i / self.cfg.num_rows * difficulty_scale
                 choice = j / self.cfg.num_cols + 0.001
 
-                if hasattr(self.cfg, "turn_angle_deg_max"):
-                    self.cfg._first_turn_left = ((i + j) % 2 == 0)
-                terrain = self.make_terrain(choice, difficulty, col_index=j)
-                self.add_terrain_to_map(terrain, i, j, direction=j % 4)
-        self._draw_goal_rings()
+                terrain = self.make_terrain(choice, difficulty)
+                self.add_terrain_to_map(terrain, i, j)
 
     def selected_terrain(self):
         terrain_type = self.cfg.terrain_kwargs.pop('type')
@@ -118,10 +127,9 @@ class Terrain:
                                                horizontal_scale=self.horizontal_scale)
 
             eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
-            self.add_terrain_to_map(terrain, i, j, direction=None)
-        self._draw_goal_rings()
+            self.add_terrain_to_map(terrain, i, j)
 
-    def make_terrain(self, choice, difficulty, col_index=None):
+    def make_terrain(self, choice, difficulty):
         terrain = terrain_utils.SubTerrain("terrain",
                                            width=self.width_per_env_pixels,
                                            length=self.width_per_env_pixels,
@@ -129,13 +137,23 @@ class Terrain:
                                            horizontal_scale=self.cfg.horizontal_scale)
         slope = difficulty * 0.4
         step_height = 0.05 + 0.18 * difficulty
-        discrete_obstacles_height = 0.05 + difficulty * 0.2
-        # Optional task-level override: sample obstacle height from a configurable range.
-        if hasattr(self.cfg, "discrete_obstacle_height_range"):
-            h_min, h_max = self.cfg.discrete_obstacle_height_range
-            discrete_obstacles_height = np.random.uniform(h_min, h_max)
-        stepping_stones_size = 1.5 * (1.05 - difficulty)
-        stone_distance = 0.05 if difficulty == 0 else 0.1
+        discrete_obstacles_height = 0.02 + difficulty * 0.2
+
+
+        if hasattr(self.cfg, 'stepping_stones_size'):
+            stepping_stones_size = self.cfg.stepping_stones_size + difficulty * 0.5
+            stepping_stones_max_height = self.cfg.stepping_stones_max_height + difficulty * 0.3
+            stepping_stones_platform_size = self.cfg.stepping_stones_platform_size
+            stone_distance = self.cfg.stepping_stones_distance + difficulty * 0.5
+        else:
+            # Configs whose terrain class shadows LeggedRobotCfg.terrain lack these
+            # fields; fall back to the fork's legacy difficulty-driven parametrization.
+            stepping_stones_size = 1.5 * (1.05 - difficulty)
+            stepping_stones_max_height = 0.
+            stepping_stones_platform_size = 4.
+            stone_distance = 0.05 if difficulty == 0 else 0.1
+
+
         gap_size = 1. * difficulty
         pit_depth = 1. * difficulty
         if choice < self.proportions[0]:
@@ -144,7 +162,7 @@ class Terrain:
             terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.)
         elif choice < self.proportions[1]:
             terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.)
-            terrain_utils.random_uniform_terrain(terrain, min_height=-0.05, max_height=0.05, step=0.005, downsampled_scale=0.2)
+            terrain_utils.random_uniform_terrain(terrain, min_height=-0.03, max_height=0.03, step=0.005, downsampled_scale=0.2)
         elif choice < self.proportions[3]:
             if choice < self.proportions[2]:
                 step_height *= -1
@@ -157,23 +175,19 @@ class Terrain:
                                                      rectangle_min_size, rectangle_max_size, num_rectangles, platform_size=3.)
         elif choice < self.proportions[5]:
             terrain_utils.stepping_stones_terrain(terrain, stone_size=stepping_stones_size,
-                                                  stone_distance=stone_distance, max_height=0., platform_size=4.)
+                                                  stone_distance=stone_distance, max_height=stepping_stones_max_height, platform_size=stepping_stones_platform_size)
         elif choice < self.proportions[6]:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.)
-
         elif choice < self.proportions[7]:
-            direction = col_index % 4 if col_index is not None else 0
-            trapezoid_corridor_terrain(terrain, difficulty, self.cfg, direction=direction)
-
-        elif choice < self.proportions[8]:
             pillar_field_terrain(terrain, difficulty, self.cfg)
-        
+        elif choice < self.proportions[8]:
+            sin_curve_channel_terrain(terrain, difficulty, self.cfg)
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.)
 
         return terrain
 
-    def add_terrain_to_map(self, terrain, row, col, direction=None):
+    def add_terrain_to_map(self, terrain, row, col):
         i = row
         j = col
         # map coordinate system
@@ -183,64 +197,14 @@ class Terrain:
         end_y = self.border + (j + 1) * self.width_per_env_pixels
         self.height_field_raw[start_x: end_x, start_y:end_y] = terrain.height_field_raw
 
-        if hasattr(self.cfg, "corridor_width"):
-            margin = float(getattr(self.cfg, "end_margin", 0.5))
-            dir_idx = int(direction) if direction is not None else 0
-            # tile top-left corner in world coords
-            tile_x0 = row * self.env_length
-            tile_y0 = col * self.env_width
-            half_w = self.cfg.terrain_width / 2.0
-            cw2 = self.cfg.corridor_width / 2.0
-            if dir_idx == 0:  # +Y: entrance at bottom center
-                env_origin_x = tile_x0 + half_w
-                env_origin_y = tile_y0 + cw2 + margin
-            elif dir_idx == 1:  # +X: entrance at left center
-                env_origin_x = tile_x0 + cw2 + margin
-                env_origin_y = tile_y0 + half_w
-            elif dir_idx == 2:  # -Y: entrance at top center
-                env_origin_x = tile_x0 + half_w
-                env_origin_y = tile_y0 + self.env_width - cw2 - margin
-            else:  # dir_idx == 3: -X: entrance at right center
-                env_origin_x = tile_x0 + self.env_length - cw2 - margin
-                env_origin_y = tile_y0 + half_w
-            env_origin_z = 0.0
-        else:
-            env_origin_x = (i + 0.5) * self.env_length
-            env_origin_y = (j + 0.5) * self.env_width
-            x1 = int((self.env_length/2. - 1) / terrain.horizontal_scale)
-            x2 = int((self.env_length/2. + 1) / terrain.horizontal_scale)
-            y1 = int((self.env_width/2. - 1) / terrain.horizontal_scale)
-            y2 = int((self.env_width/2. + 1) / terrain.horizontal_scale)
-            env_origin_z = np.min(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
+        env_origin_x = (i + 0.5) * self.env_length
+        env_origin_y = (j + 0.5) * self.env_width
+        x1 = int((self.env_length/2. - 1) / terrain.horizontal_scale)
+        x2 = int((self.env_length/2. + 1) / terrain.horizontal_scale)
+        y1 = int((self.env_width/2. - 1) / terrain.horizontal_scale)
+        y2 = int((self.env_width/2. + 1) / terrain.horizontal_scale)
+        env_origin_z = np.max(terrain.height_field_raw[x1:x2, y1:y2])*terrain.vertical_scale
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
-        if hasattr(terrain, "spawn_angle"):
-            self.spawn_angles[i, j] = terrain.spawn_angle
-        if hasattr(terrain, "goal_offset_x"):
-            self.goal_offsets[i, j, 0] = terrain.goal_offset_x
-            self.goal_offsets[i, j, 1] = terrain.goal_offset_y
-
-    def _draw_goal_rings(self):
-        """Draw goal rings on terrain height field (corridor terrain)."""
-        if not hasattr(self.cfg, "corridor_width"):
-            return
-        hs = self.cfg.horizontal_scale
-        vs = self.cfg.vertical_scale
-        ring_r_px = int(self.cfg.goal_radius / hs)
-        ring_h_px = max(int(0.03 / vs), 1)
-        N = max(ring_r_px * 6, 24)
-        for i in range(self.cfg.num_rows):
-            for j in range(self.cfg.num_cols):
-                gx = self.env_origins[i, j, 0] + self.goal_offsets[i, j, 0]
-                gy = self.env_origins[i, j, 1] + self.goal_offsets[i, j, 1]
-                gx_px = int(gx / hs) + self.border
-                gy_px = int(gy / hs) + self.border
-                for k in range(N):
-                    a = 2.0 * np.pi * k / N
-                    px = gx_px + int(ring_r_px * np.cos(a))
-                    py = gy_px + int(ring_r_px * np.sin(a))
-                    if 0 <= px < self.tot_rows and 0 <= py < self.tot_cols:
-                        self.height_field_raw[px, py] = max(
-                            self.height_field_raw[px, py], ring_h_px)
 
 
 def gap_terrain(terrain, gap_size, platform_size=1.):
@@ -267,10 +231,51 @@ def pit_terrain(terrain, depth, platform_size=1.):
     y2 = terrain.width // 2 + platform_size
     terrain.height_field_raw[x1:x2, y1:y2] = -depth
 
+def sin_curve_channel_terrain(terrain, difficulty, cfg):
+    """Generate a sine-wave channel with walls on both sides.
+
+    Channel runs along terrain width (world x-axis).  The centre varies
+    along terrain length (world y-axis):
+
+        centre = L/2 + amplitude * sin(2*pi*periods * world_pos / W_world)
+
+    Parameters (from cfg):
+        channel_width:   passable channel width (m).  Default 3.0.
+        wall_height:     wall height (m).              Default 2.0.
+        curve_amplitude: sine amplitude (m).           Default 1.0.
+        curve_periods:   number of full sine periods.  Default 1.5.
+    """
+    channel_width = float(getattr(cfg, "channel_width", 3.0))
+    wall_height = float(getattr(cfg, "wall_height", 2.0))
+    curve_amplitude = float(getattr(cfg, "curve_amplitude", 1.0))
+    curve_periods = float(getattr(cfg, "curve_periods", 1.5))
+
+    hs = terrain.horizontal_scale
+    vs = terrain.vertical_scale
+    L = terrain.length
+    W = terrain.width
+    L_world = L * hs
+    W_world = W * hs
+
+    wall_px = int(wall_height / vs)
+    half_px = int(channel_width / 2.0 / hs)
+
+    for py in range(W):
+        world_pos = py * hs
+        centre = L_world / 2.0 + curve_amplitude * np.sin(
+            2.0 * np.pi * curve_periods * world_pos / W_world)
+        centre_px = int(centre / hs)
+        lo = min(L, max(0, centre_px - half_px))
+        hi = max(0, min(L, centre_px + half_px))
+        terrain.height_field_raw[:lo, py] = wall_px
+        terrain.height_field_raw[hi:, py] = wall_px
+
 def pillar_field_terrain(terrain, difficulty, cfg):
     """
     生成随机分布的四棱柱障碍物地形（矩形截面）。
-    数量随 difficulty 线性增加，尺寸和间距可配置。
+
+    预生成全部尺寸后逐个放置：每个障碍物在环带内随机采样位置，
+    通过占用网格做 O(1) 碰撞检测（AABB + margin），兼顾效率和正确性。
     """
     # 数量范围（随难度插值）
     count_min = getattr(cfg, "pillar_count_min", 0)
@@ -284,94 +289,119 @@ def pillar_field_terrain(terrain, difficulty, cfg):
     height_min = getattr(cfg, "pillar_height_min", 0.20)
     height_max = getattr(cfg, "pillar_height_max", 0.50)
     # 间距与放置
-    min_separation = getattr(cfg, "pillar_min_separation", 1.2)          # 柱心最小间距（米）
-    center_clear_radius = getattr(cfg, "pillar_center_clear_radius", 1.2)  # 出生点净空半径（米）
-    spawn_radius = getattr(cfg, "pillar_spawn_radius", 4.0)              # 障碍物最大生成半径（米）
+    min_separation = getattr(cfg, "pillar_min_separation", 1.2)
+    center_clear_radius = getattr(cfg, "pillar_center_clear_radius", 1.2)
+    spawn_radius = getattr(cfg, "pillar_spawn_radius", 4.0)
     allow_height_variation = getattr(cfg, "pillar_allow_height_variation", True)
 
-    # 根据难度插值计算当前数量
     count = int(count_min + difficulty * (count_max - count_min))
-    # 尺寸随机
-    size_x = []
-    size_y = []
-    height = []
-    size_x_px = []
-    size_y_px = []
-    height_px = []
-    for i in range(count):
-        size_x.append(size_x_min + np.random.uniform(0.0, 1.0) * (size_x_max - size_x_min))
-        size_y.append(size_y_min + np.random.uniform(0.0, 1.0) * (size_y_max - size_y_min))
-        height.append(height_min + np.random.uniform(0.0, 1.0) * (height_max - height_min))
-
-        size_x_px.append(int(size_x[i] / terrain.horizontal_scale))
-        size_y_px.append(int(size_y[i] / terrain.horizontal_scale))
-        height_px.append(int(height[i] / terrain.vertical_scale))
 
     min_sep_px = int(min_separation / terrain.horizontal_scale)
     clear_radius_px = int(center_clear_radius / terrain.horizontal_scale)
     spawn_radius_px = int(spawn_radius / terrain.horizontal_scale)
+    margin = min_sep_px // 2
 
-    # 地形中心
-    center_x = terrain.width // 2
-    center_y = terrain.length // 2
+    L = terrain.length
+    W = terrain.width
+    center_y = L // 2
+    center_x = W // 2
 
-    # 生成满足约束的随机位置
-    max_attempts = count * 100
+    # ---- 预生成全部尺寸（长/短边 split + 随机方向） ----
+    half_x_px = []
+    half_y_px = []
+    occ_hx_px = []
+    occ_hy_px = []
+    height_px = []
+
+    for _ in range(count):
+        split = np.random.uniform(0.2, 0.8)
+        x_range = size_x_max - size_x_min
+        y_range = size_y_max - size_y_min
+
+        if np.random.rand() > 0.5:
+            long_min = size_x_min + split * x_range
+            sx = long_min + np.random.uniform(0.0, 1.0) * (size_x_max - long_min)
+            short_max = size_y_min + split * y_range
+            sy = size_y_min + np.random.uniform(0.0, 1.0) * (short_max - size_y_min)
+        else:
+            long_min = size_y_min + split * y_range
+            sy = long_min + np.random.uniform(0.0, 1.0) * (size_y_max - long_min)
+            short_max = size_x_min + split * x_range
+            sx = size_x_min + np.random.uniform(0.0, 1.0) * (short_max - size_x_min)
+
+        hx = int(sx / terrain.horizontal_scale) // 2
+        hy = int(sy / terrain.horizontal_scale) // 2
+        h_val = height_min + np.random.uniform(0.0, 1.0) * (height_max - height_min)
+
+        half_x_px.append(hx)
+        half_y_px.append(hy)
+        occ_hx_px.append(hx + margin)
+        occ_hy_px.append(hy + margin)
+        height_px.append(int(h_val / terrain.vertical_scale))
+
+    # ---- 占用网格 ----
+    occupied = np.zeros((L, W), dtype=bool)
+
+    max_attempts_per = count * 100
     positions = []
+
     for i in range(count):
-        half_x = size_x_px[i] // 2
-        half_y = size_y_px[i] // 2
-        for _ in range(max_attempts):
-            # 在圆形区域内随机采样
+        hx = half_x_px[i]
+        hy = half_y_px[i]
+        occ_hx = occ_hx_px[i]
+        occ_hy = occ_hy_px[i]
+
+        # 障碍物太大跳过
+        if hy * 2 >= L or hx * 2 >= W:
+            continue
+
+        for _ in range(max_attempts_per):
             r = np.random.uniform(clear_radius_px, spawn_radius_px)
             theta = np.random.uniform(0, 2 * np.pi)
             cx = int(center_x + r * np.cos(theta))
             cy = int(center_y + r * np.sin(theta))
 
-            # 边界检查
-            if (cx - half_x < 0 or cx + half_x >= terrain.width or
-                cy - half_y < 0 or cy + half_y >= terrain.length):
+            # 边界检查（仅本体）
+            if cx - hx < 0 or cx + hx >= W or cy - hy < 0 or cy + hy >= L:
                 continue
 
-            # 检查与中心点距离
+            # 中心点距离检查
             if np.hypot(cx - center_x, cy - center_y) < clear_radius_px:
-                 continue
+                continue
 
-            # 检查与已有位置的间距
-            valid = True
-            for px, py, pid in positions:
-                half_1 = max(half_x, half_y)
-                half_2 = max(size_x_px[pid] // 2, size_y_px[pid] // 2)
-                sep = min_sep_px + half_1 + half_2
-                if np.hypot(cx - px, cy - py) < sep:
-                    valid = False
-                    break
-            if valid:
-                positions.append((cx, cy, i))
-                break
+            # O(1) 碰撞检测：占用网格切片
+            oy1 = cy - occ_hy
+            oy2 = cy + occ_hy
+            ox1 = cx - occ_hx
+            ox2 = cx + occ_hx
+            if oy1 < 0 or oy2 > L or ox1 < 0 or ox2 > W:
+                continue
+            if occupied[oy1:oy2, ox1:ox2].any():
+                continue
 
-    # 在高度图上绘制矩形棱柱
-    for cx, cy, idx in positions:
-        h_base = height_px[idx]
+            # 放置成功
+            occupied[oy1:oy2, ox1:ox2] = True
+            positions.append((cx, cy, height_px[i], hx, hy))
+            break
+
+    # ---- 绘制 ----
+    for cx, cy, h_px, hx, hy in positions:
         if allow_height_variation:
-            h_px = np.random.randint(int(h_base * 0.6), h_base + 1)
+            h = np.random.randint(int(h_px * 0.6), h_px + 1)
         else:
-            h_px = h_base
+            h = h_px
 
-        # 矩形区域
-        x1 = cx - size_x_px[idx] // 2
-        x2 = cx + size_x_px[idx] // 2
-        y1 = cy - size_y_px[idx] // 2
-        y2 = cy + size_y_px[idx] // 2
-        # 确保不越界
-        x1 = max(0, x1)
-        x2 = min(terrain.width, x2)
-        y1 = max(0, y1)
-        y2 = min(terrain.length, y2)
-        terrain.height_field_raw[x1:x2, y1:y2] = h_px
+        x1 = max(0, cx - hx)
+        x2 = min(W, cx + hx)
+        y1 = max(0, cy - hy)
+        y2 = min(L, cy + hy)
+        terrain.height_field_raw[x1:x2, y1:y2] = h
 
     return terrain
 
+# The following terrain generators are kept from the previous fork: they are
+# callable directly (unit tests / custom terrain code) but are not wired into
+# Terrain.make_terrain branch mapping.
 
 def curved_corridor_terrain(terrain, difficulty, cfg):
     """生成正弦曲线弯曲通道地形，两侧由墙壁围成，两端半圆形封口。
@@ -724,4 +754,3 @@ def _draw_circle(cx, cy, radius, width, length):
     dist = np.sqrt((x - cx)**2 + (y - cy)**2)
     mask = dist <= radius
     rr, cc = np.nonzero(mask)
-    return rr, cc

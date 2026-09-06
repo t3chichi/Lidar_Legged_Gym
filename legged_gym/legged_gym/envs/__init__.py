@@ -60,28 +60,13 @@ from .go2.flat.stand_go2_flat_config import StandGo2FlatCfg, StandGo2FlatCfgPPO
 from .go2.batch_rollout.go2_batch_rollout import Go2BatchRollout
 from .go2.batch_rollout.go2_batch_rollout_config import Go2BatchRolloutCfg, Go2BatchRolloutCfgPPO
 from .go2.batch_rollout.go2_batch_rollout_flat_config import Go2BatchRolloutFlatCfg, Go2BatchRolloutFlatCfgPPO
-from .go2.lidar_pd_risknet.go2_lidar_pd_risknet import Go2LidarPDRiskNet
-from .go2.lidar_pd_risknet.go2_lidar_pd_risknet_config import Go2LidarPDRiskNetCfg, Go2LidarPDRiskNetCfgPPO
-from .go2.lidar_pd_risknet.go2_pd_pretrain_config import (
-    Go2LidarPDRiskNetCfg as Go2LidarPDPretrainCfg,
-    Go2LidarPDRiskNetCfgPPO as Go2LidarPDPretrainCfgPPO,
-)
-from .go2.lidar_pd_risknet.go2_lidar_pillar_config import (
-    Go2LidarPillarCfg, Go2LidarPillarCfgPPO,
-)
-from .go2.lidar_pd_risknet.go2_soft_pillar_pretrain import (
-    Go2SoftPillarPretrainCfg, Go2SoftPillarPretrainCfgPPO,
-)
-
-# ── Command-Safe Velocity ──
-from legged_gym.envs.go2.cmd_safe import Go2CmdSafe
-from legged_gym.envs.go2.cmd_safe.go2_cmd_safe_config import Go2CmdSafeCfg, Go2CmdSafeCfgPPO
 
 from .cassie.cassie import Cassie
 from .cassie.cassie_config import CassieRoughCfg, CassieRoughCfgPPO
 from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 
-from .elspider_air.elspider import ElSpider, PoseElSpider, FootTrackElSpider
+from .elspider_air.elspider import ElSpider, ElSpiderStudent
+from .elspider_air.elspider_tasks import PoseElSpider, FootTrackElSpider
 from .elspider_air.mixed_terrains.elspider_air_rough_config import ElSpiderAirRoughCfg, ElSpiderAirRoughCfgPPO
 from .elspider_air.mixed_terrains.elspider_air_rough_train_config import ElSpiderAirRoughTrainCfg, ElSpiderAirRoughTrainCfgPPO
 from .elspider_air.mixed_terrains.elspider_air_rough_raycast_config import ElSpiderAirRoughRaycastCfg, ElSpiderAirRoughRaycastCfgPPO
@@ -179,17 +164,6 @@ task_registry.register("stand_go2_flat", StandGo2, StandGo2FlatCfg(), StandGo2Fl
 task_registry.register("go2_batch_rollout", Go2BatchRollout, Go2BatchRolloutCfg(), Go2BatchRolloutCfgPPO())
 task_registry.register("go2_batch_rollout_flat", Go2BatchRollout,
                        Go2BatchRolloutFlatCfg(), Go2BatchRolloutFlatCfgPPO())
-task_registry.register("go2_lidar_pd_risknet", Go2LidarPDRiskNet,
-                       Go2LidarPDRiskNetCfg(), Go2LidarPDRiskNetCfgPPO())
-task_registry.register("go2_pd_pretrain", Go2LidarPDRiskNet,
-                       Go2LidarPDPretrainCfg(), Go2LidarPDPretrainCfgPPO())
-task_registry.register("go2_lidar_pillar", Go2LidarPDRiskNet,
-                       Go2LidarPillarCfg(), Go2LidarPillarCfgPPO())
-task_registry.register("go2_soft_pretrain", Go2LidarPDRiskNet,
-                       Go2SoftPillarPretrainCfg(), Go2SoftPillarPretrainCfgPPO())
-
-# ── Command-Safe Velocity ──
-task_registry.register("go2_cmd_safe", Go2CmdSafe, Go2CmdSafeCfg(), Go2CmdSafeCfgPPO())
 
 task_registry.register("a1", LeggedRobot, A1RoughCfg(), A1RoughCfgPPO())
 task_registry.register("cassie", Cassie, CassieRoughCfg(), CassieRoughCfgPPO())
@@ -252,3 +226,15 @@ task_registry.register("anymal_c_rough_student", AnymalStudent, AnymalCRoughStud
 # Register franka environments
 task_registry.register("franka", Franka, FrankaCfg(), FrankaCfgPPO())
 task_registry.register("franka_batch_rollout", FrankaBatchRollout, FrankaBatchRolloutCfg(), FrankaBatchRolloutCfgPPO)
+
+# Register EL_4090 PD-GRU lidar environments (ported from lab repo).
+# el4090_lidar is the BASE config for the shared PD network — variants
+# (_tripod2_low, _tripod2_low_avoid, ...) inherit from it; train the
+# variants, not the base task itself.
+from .el_4090.pd_gru_lidar.el_4090_lidar import EL_4090_Lidar
+from .el_4090.pd_gru_lidar.el_4090_lidar_config import El4090LidarCfg, El4090LidarCfgPPO
+from .el_4090.pd_gru_lidar.el_4090_lidar_tripod2_low_config import El4090LidarTripod2LowCfg, El4090LidarTripod2LowCfgPPO
+from .el_4090.pd_gru_lidar.el_4090_lidar_tripod2_low_avoid_config import El4090LidarTripod2LowAvoidCfg, El4090LidarTripod2LowAvoidCfgPPO
+task_registry.register("el4090_lidar", EL_4090_Lidar, El4090LidarCfg(), El4090LidarCfgPPO())
+task_registry.register("el4090_lidar_tripod2_low", EL_4090_Lidar, El4090LidarTripod2LowCfg(), El4090LidarTripod2LowCfgPPO())
+task_registry.register("el4090_lidar_tripod2_low_avoid", EL_4090_Lidar, El4090LidarTripod2LowAvoidCfg(), El4090LidarTripod2LowAvoidCfgPPO())

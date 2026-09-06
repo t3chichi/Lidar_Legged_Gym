@@ -76,12 +76,20 @@ class LeggedRobotCfg(BaseConfig):
         selected = False  # select a unique terrain type and pass all arguments
         terrain_kwargs = None  # Dict of arguments for selected terrain
         max_init_terrain_level = 5  # starting curriculum state
-        terrain_length = 5.
-        terrain_width = 5.
+        terrain_length = 7.
+        terrain_width = 7.
         num_rows = 8  # number of terrain rows (levels)
         num_cols = 8  # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
+
+        # stepping stones
+        stepping_stones_size = 0.5
+        stepping_stones_distance = 1.0
+        stepping_stones_max_height = 0.2
+        stepping_stones_platform_size = 3.0
+
+
         # confined terrain types: [tunnel, barrier, timber_piles, confined_gap]
         confined_terrain_proportions = [0.25, 0.5, 0.75, 1.0]
         # trimesh only:
@@ -208,8 +216,8 @@ class LeggedRobotCfg(BaseConfig):
 
         only_positive_rewards = True  # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
-        soft_dof_pos_limit = 1.  # percentage of urdf limits, values above this limit are penalized
-        soft_dof_vel_limit = 1.
+        soft_dof_pos_limit = 0.9  # percentage of urdf limits, values above this limit are penalized
+        soft_dof_vel_limit = 0.9
         soft_torque_limit = 1.
         base_height_target = 1.
         max_contact_force = 100.  # forces above this value are penalized
