@@ -42,6 +42,9 @@ class EL_4090_Lidar(EL_4090):
 
     def _init_buffers(self):
         super()._init_buffers()
+        # check_termination writes this when enable_fall_termination is on;
+        # kept separate from reset_buf, which is also set on timeouts.
+        self.terminate_buf = torch.zeros_like(self.reset_buf)
         self._lidar_done_this_step = False
         self._init_lidar_buffers()
         self._init_sector_buffers()
